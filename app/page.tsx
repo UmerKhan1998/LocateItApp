@@ -25,6 +25,36 @@ export default function Page() {
       description: "The holiest city in Islam, home to the Kaaba.",
     },
     {
+      cityName: "Jeddah",
+      lat: 21.5431,
+      lng: 39.2009,
+      description: "The second largest city in Saudi Arabia, known for its beaches.",
+    },
+    {
+      cityName: "Mecca",
+      lat: 21.4228,
+      lng: 39.8262,
+      description: "The holy city of Islam, home to the Masjid al-Haram.",
+    },
+    {
+      cityName: "Dammam",
+      lat: 26.3546,
+      lng: 49.8025,
+      description: "The third largest city in Saudi Arabia, known for its oil industry.",
+    },
+    {
+      cityName: "Tabuk",
+      lat: 28.3872,
+      lng: 36.6084,
+      description: "Known for its desert landscapes, Tabuk is a popular tourist destination.",
+    },
+    {
+      cityName: "Taif",
+      lat: 21.3333,
+      lng: 40.4167,
+      description: "Known for its old city walls and historical sites, Taif is a popular tourist destination.",
+    },
+    {
       cityName: "Medina",
       lat: 24.5247,
       lng: 39.5692,
