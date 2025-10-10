@@ -19,7 +19,6 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   size = 10,
 }) => {
   const [matrix, setMatrix] = useState<CrosswordCell[][]>([]);
-  console.log('matrix', matrix);
 
   const createEmptyCell = (): CrosswordCell => ({
     isPattern: false,
@@ -77,26 +76,6 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     }
   };
 
-  const addStructuredBlanks = (grid: CrosswordCell[][]): CrosswordCell[][] => {
-    const newGrid = grid.map(row => row.map(cell => ({ ...cell })));
-
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        const cell = newGrid[r][c];
-        // Only consider pattern cells that aren't starting points
-        if (cell.isPattern && !cell.referenceNo) {
-          // Apply structured blanking rule (for crossword effect)
-          // Blank every other diagonal cell for aesthetic gaps
-          if ((r + c) % 3 === 0 && Math.random() < 0.5) {
-            cell.isPattern = false;
-            cell.aplhabet = "";
-          }
-        }
-      }
-    }
-    return newGrid;
-  };
-
   const generateCrossword = (): CrosswordCell[][] => {
     const grid = createEmptyMatrix();
     let reference = 1;
@@ -121,8 +100,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       if (!placed) console.warn(`Could not place word: ${word}`);
     }
 
-    // Apply crossword-like blank structure
-    return addStructuredBlanks(grid);
+    return grid;
   };
 
   useEffect(() => {
@@ -130,10 +108,11 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   }, [wordsInput]);
 
   return (
-    <div className="p-4">
-      <h2 className="font-bold text-xl mb-4 text-center">Crossword Puzzle</h2>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-6">
+      <h2 className="text-white text-2xl font-bold mb-6">Crossword Puzzle</h2>
+
       <div
-        className="grid"
+        className="grid bg-purple-800 p-3 rounded-xl shadow-lg"
         style={{
           gridTemplateColumns: `repeat(${size}, 2.5rem)`,
           gridTemplateRows: `repeat(${size}, 2.5rem)`,
@@ -144,22 +123,18 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
           row.map((cell, cIdx) => (
             <div
               key={`${rIdx}-${cIdx}`}
-              className={`flex items-center justify-center border text-sm font-semibold ${
-                cell.isPattern
-                  ? "bg-black text-white"
-                  : "bg-gray-200 text-transparent"
-              }`}
-              style={{ position: "relative" }}
+              className={`relative flex items-center justify-center font-bold border 
+                ${
+                  cell.isPattern
+                    ? "bg-white text-black border-black"
+                    : "bg-purple-700 border-purple-700"
+                }
+                rounded-sm text-lg transition-all duration-200
+              `}
             >
               {cell.referenceNo && (
                 <span
-                  style={{
-                    position: "absolute",
-                    top: 2,
-                    left: 3,
-                    fontSize: "0.6rem",
-                    color: "yellow",
-                  }}
+                  className="absolute text-[0.6rem] top-[2px] left-[4px] text-gray-600 font-semibold"
                 >
                   {cell.referenceNo}
                 </span>
