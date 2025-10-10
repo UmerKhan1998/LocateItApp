@@ -20,6 +20,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   size = 10,
 }) => {
   const [matrix, setMatrix] = useState<CrosswordCell[][]>([]);
+  console.log('matrix', matrix);
 
   const createEmptyCell = (): CrosswordCell => ({
     isPattern: false,
