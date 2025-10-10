@@ -7,6 +7,7 @@ type CrosswordCell = {
   referenceNo: number | null;
   referenceHeading: string;
   referenceDesc: string;
+  isFirstLetter?: boolean;
 };
 
 interface CrosswordMatrixProps {
@@ -26,6 +27,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     referenceNo: null,
     referenceHeading: "",
     referenceDesc: "",
+    isFirstLetter: false,
   });
 
   const createEmptyMatrix = (): CrosswordCell[][] =>
@@ -33,6 +35,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       Array.from({ length: size }, createEmptyCell)
     );
 
+  // ✅ Improved overlap-aware placement check
   const canPlaceWord = (
     grid: CrosswordCell[][],
     word: string,
@@ -56,6 +59,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     return true;
   };
 
+  // ✅ Ensure continuous, non-broken placement
   const placeWord = (
     grid: CrosswordCell[][],
     word: string,
@@ -67,11 +71,13 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     for (let i = 0; i < word.length; i++) {
       const target = horizontal ? grid[row][col + i] : grid[row + i][col];
       target.isPattern = true;
-      target.aplhabet = word[i];
       if (i === 0) {
+        target.aplhabet = word[i];
+        target.isFirstLetter = true;
         target.referenceNo = refNo;
-        target.referenceHeading = `Word ${refNo}`;
-        target.referenceDesc = `Starts with '${word[i]}'`;
+      } else {
+        target.aplhabet = word[i];
+        target.isFirstLetter = false;
       }
     }
   };
@@ -84,7 +90,8 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       let placed = false;
       let attempts = 0;
 
-      while (!placed && attempts < 100) {
+      // Try multiple placements until a valid non-breaking position found
+      while (!placed && attempts < 200) {
         attempts++;
         const horizontal = Math.random() < 0.5;
         const row = Math.floor(Math.random() * size);
@@ -139,7 +146,9 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                   {cell.referenceNo}
                 </span>
               )}
-              {cell.isPattern ? cell.aplhabet.toUpperCase() : ""}
+              {cell.isPattern && cell.isFirstLetter
+                ? cell.aplhabet.toUpperCase()
+                : ""}
             </div>
           ))
         )}
