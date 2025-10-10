@@ -12,13 +12,14 @@ type CrosswordCell = {
 
 interface CrosswordMatrixProps {
   wordsInput: string[];
-  size?: number;
+  defaultSize?: number;
 }
 
 const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   wordsInput,
-  size = 10,
+  defaultSize = 10,
 }) => {
+  const [size, setSize] = useState<number>(defaultSize);
   const [matrix, setMatrix] = useState<CrosswordCell[][]>([]);
   const [placedWords, setPlacedWords] = useState<
     { referenceNo: number; word: string }[]
@@ -126,11 +127,28 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     const { grid, placed } = generateCrossword();
     setMatrix(grid);
     setPlacedWords(placed);
-  }, [wordsInput]);
+  }, [wordsInput, size]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-6">
-      <h2 className="text-white text-2xl font-bold mb-6">Crossword Puzzle</h2>
+      <h2 className="text-white text-2xl font-bold mb-4">Crossword Puzzle</h2>
+
+      {/* 🎛️ Size Selector */}
+      <div className="mb-6 flex items-center gap-3 text-white">
+        <label htmlFor="size" className="text-sm font-medium">
+          Select Grid Size:
+        </label>
+        <select
+          id="size"
+          value={size}
+          onChange={(e) => setSize(Number(e.target.value))}
+          className="bg-purple-800 border border-purple-400 text-white rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-purple-400"
+        >
+          <option value={4}>4 × 4</option>
+          <option value={6}>6 × 6</option>
+          <option value={10}>10 × 10</option>
+        </select>
+      </div>
 
       {/* Crossword Grid */}
       <div
@@ -164,12 +182,12 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
         )}
       </div>
 
-      {/* 🟪 Slider Section */}
+      {/* 🟪 Themed Slider Section */}
       <div className="relative w-full max-w-lg overflow-hidden">
         {/* Left Arrow */}
         <button
           onClick={() => scrollSlider("left")}
-          className="absolute left-0 top-1/2 -translate-y-1/2 bg-purple-600 hover:bg-purple-500 text-white rounded-full w-8 h-8 flex items-center justify-center z-10"
+          className="absolute left-0 top-1/2 -translate-y-1/2 bg-purple-600 hover:bg-purple-500 text-white rounded-full w-8 h-8 flex items-center justify-center z-10 shadow-md"
         >
           ‹
         </button>
@@ -177,7 +195,9 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
         {/* Scrollable Cards */}
         <div
           ref={sliderRef}
-          className="flex overflow-x-auto gap-4 scrollbar-hide scroll-smooth px-10 py-4"
+          className="flex overflow-x-auto gap-4 scroll-smooth px-10 py-4 
+                     scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-800 
+                     hover:scrollbar-thumb-purple-300 transition-all duration-300"
         >
           {placedWords.map((item) => (
             <div
@@ -197,7 +217,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
         {/* Right Arrow */}
         <button
           onClick={() => scrollSlider("right")}
-          className="absolute right-0 top-1/2 -translate-y-1/2 bg-purple-600 hover:bg-purple-500 text-white rounded-full w-8 h-8 flex items-center justify-center z-10"
+          className="absolute right-0 top-1/2 -translate-y-1/2 bg-purple-600 hover:bg-purple-500 text-white rounded-full w-8 h-8 flex items-center justify-center z-10 shadow-md"
         >
           ›
         </button>
