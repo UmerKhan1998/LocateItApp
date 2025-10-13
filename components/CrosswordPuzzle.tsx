@@ -19,7 +19,7 @@ type WordData = {
 
 interface CrosswordMatrixProps {
   defaultWords?: WordData[];
-  defaultSize?: number;
+  defaultSize?: number; // 8 | 10 | 15
 }
 
 /** ---------- Helpers ---------- */
@@ -200,40 +200,6 @@ function buildNumbersAndClues(
   return { across, down };
 }
 
-/** Crop the grid to the tight bounding box of letters */
-function crop(grid: CrosswordCell[][]) {
-  const H = grid.length;
-  const W = grid[0].length;
-  let rMin = H,
-    rMax = -1,
-    cMin = W,
-    cMax = -1;
-
-  for (let r = 0; r < H; r++) {
-    for (let c = 0; c < W; c++) {
-      if (grid[r][c].isLetter) {
-        rMin = Math.min(rMin, r);
-        rMax = Math.max(rMax, r);
-        cMin = Math.min(cMin, c);
-        cMax = Math.max(cMax, c);
-      }
-    }
-  }
-  if (rMax < rMin || cMax < cMin) return grid;
-
-  const cropped = range(rMax - rMin + 1).map(() =>
-    range(cMax - cMin + 1).map(newCell)
-  );
-  for (let r = rMin; r <= rMax; r++) {
-    for (let c = cMin; c <= cMax; c++) {
-      const dst = cropped[r - rMin][c - cMin];
-      const src = grid[r][c];
-      Object.assign(dst, src);
-    }
-  }
-  return cropped;
-}
-
 /** Try to place all words with intersections, alternating directions. */
 function generateGrid(
   size: number,
@@ -260,27 +226,30 @@ function generateGrid(
 
     if (!items.length) return { grid, placedMeta: [] };
 
-    // place first (longest) horizontally
+    // place first (longest) horizontally near center
     {
       const first = items[0];
       const r = Math.floor(size / 2);
       const c = Math.max(0, Math.floor((size - first.word.length) / 2));
+      let ok = false;
       if (canPlace(grid, r, c, first.word, "ACROSS")) {
         placeWord(grid, r, c, first.word, "ACROSS");
         placed.push(first);
+        ok = true;
       } else {
-        let done = false;
-        for (let rr = 0; rr < size && !done; rr++) {
-          for (let cc = 0; cc < size && !done; cc++) {
+        // scan any slot
+        outer: for (let rr = 0; rr < size; rr++) {
+          for (let cc = 0; cc < size; cc++) {
             if (canPlace(grid, rr, cc, first.word, "ACROSS")) {
               placeWord(grid, rr, cc, first.word, "ACROSS");
               placed.push(first);
-              done = true;
+              ok = true;
+              break outer;
             }
           }
         }
-        if (!done) continue;
       }
+      if (!ok) continue; // retry this attempt
     }
 
     let dir: "ACROSS" | "DOWN" = "DOWN";
@@ -357,9 +326,9 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     { word: "TOPIC", referenceHeading: "Subject", referenceDesc: "The main idea or theme of a discussion" },
     { word: "TREE", referenceHeading: "Plant", referenceDesc: "A tall plant with a trunk, branches, and leaves" },
   ],
-  defaultSize = 13,
+  defaultSize = 10, // show 10×10 first
 }) => {
-  const [size, setSize] = useState<number>(defaultSize);
+  const [size, setSize] = useState<number>(defaultSize); // 8 | 10 | 15
   const [wordsInput, setWordsInput] = useState<WordData[]>(defaultWords);
   const [showAnswers, setShowAnswers] = useState(false);
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
@@ -369,17 +338,16 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   const [newHeading, setNewHeading] = useState("");
   const [newDesc, setNewDesc] = useState("");
 
-  // generate + prefill first letters after numbering
+  // generate on inputs/size
   const { grid, across, down, placedList } = useMemo(() => {
-    const { grid: rawGrid, placedMeta } = generateGrid(size, wordsInput);
-    const cropped = crop(rawGrid);
-    const { across, down } = buildNumbersAndClues(cropped, placedMeta);
+    const { grid: fullGrid, placedMeta } = generateGrid(size, wordsInput);
+    const { across, down } = buildNumbersAndClues(fullGrid, placedMeta);
 
     // prefill the first letter of each word (Across & Down)
-    for (const a of across) cropped[a.row][a.col].prefill = true;
-    for (const d of down) cropped[d.row][d.col].prefill = true;
+    for (const a of across) fullGrid[a.row][a.col].prefill = true;
+    for (const d of down) fullGrid[d.row][d.col].prefill = true;
 
-    return { grid: cropped, across, down, placedList: placedMeta };
+    return { grid: fullGrid, across, down, placedList: placedMeta };
   }, [size, wordsInput]);
 
   const sliderRef = useRef<HTMLDivElement | null>(null);
@@ -444,20 +412,29 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* LEFT: Grid + cards */}
         <div className="flex flex-col items-center">
-          {/* Grid */}
+          {/* Fixed-size Grid (8×8 / 10×10 / 15×15) with visible boxes */}
           <div
             className="grid bg-purple-800 p-3 rounded-xl shadow-lg mb-4"
             style={{
-              gridTemplateColumns: `repeat(${grid[0]?.length || 0}, 2.6rem)`,
-              gridTemplateRows: `repeat(${grid.length}, 2.6rem)`,
+              gridTemplateColumns: `repeat(${size}, 2.6rem)`,
+              gridTemplateRows: `repeat(${size}, 2.6rem)`,
               gap: "2px",
             }}
           >
-            {grid.map((row, r) =>
-              row.map((cell, c) => {
-                if (!cell.isLetter) {
-                  return <div key={`${r}-${c}-empty`} className="w-10 h-10" style={{ opacity: 0 }} />;
+            {Array.from({ length: size }).map((_, r) =>
+              Array.from({ length: size }).map((_, c) => {
+                const cell = grid[r]?.[c];
+
+                // Empty cells are still visible as white squares with borders
+                if (!cell || !cell.isLetter) {
+                  return (
+                    <div
+                      key={`${r}-${c}-empty`}
+                      className="w-10 h-10 bg-white border border-black rounded-sm"
+                    />
+                  );
                 }
+
                 return (
                   <div
                     key={`${r}-${c}`}
@@ -484,17 +461,18 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
             >
               {showAnswers ? "Hide Answers" : "Show Answers"}
             </button>
+
             <div className="flex items-center gap-2">
-              <label htmlFor="size" className="text-sm">Base Grid Size:</label>
+              <label htmlFor="size" className="text-sm">Grid Size:</label>
               <select
                 id="size"
                 value={size}
                 onChange={(e) => setSize(Number(e.target.value))}
                 className="bg-purple-700 border border-purple-400 text-white rounded-lg px-2 py-1"
               >
-                <option value={11}>11</option>
-                <option value={13}>13</option>
-                <option value={15}>15</option>
+                <option value={8}>8 × 8</option>
+                <option value={10}>10 × 10</option>
+                <option value={15}>15 × 15</option>
               </select>
             </div>
           </div>
