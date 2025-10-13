@@ -112,33 +112,18 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   // --- Improved Connected Crossword Generator ---
   const generateCrossword = (): {
     grid: CrosswordCell[][];
-    placed: {
-      referenceNo: number;
-      word: string;
-      referenceHeading: string;
-      referenceDesc: string;
-    }[];
+    placed: { referenceNo: number; word: string; referenceHeading: string; referenceDesc: string }[];
   } => {
     const tryGenerate = () => {
       const grid = createEmptyMatrix();
-      const placed: {
-        referenceNo: number;
-        word: string;
-        referenceHeading: string;
-        referenceDesc: string;
-      }[] = [];
+      const placed: { referenceNo: number; word: string; referenceHeading: string; referenceDesc: string }[] = [];
       let reference = 1;
 
       const placeFirstWord = (wordData: WordData) => {
         const startRow = Math.floor(size / 2);
         const startCol = Math.floor((size - wordData.word.length) / 2);
         placeWord(grid, wordData.word.toLowerCase(), reference, wordData.referenceHeading, wordData.referenceDesc, startRow, startCol, true);
-        placed.push({
-          referenceNo: reference,
-          word: wordData.word.toLowerCase(),
-          referenceHeading: wordData.referenceHeading,
-          referenceDesc: wordData.referenceDesc,
-        });
+        placed.push({ referenceNo: reference, word: wordData.word.toLowerCase(), referenceHeading: wordData.referenceHeading, referenceDesc: wordData.referenceDesc });
         reference++;
       };
 
@@ -149,20 +134,12 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
             const cell = grid[r][c];
             if (cell.isPattern && word.includes(cell.aplhabet.toLowerCase())) {
               const idx = word.indexOf(cell.aplhabet.toLowerCase());
-              // Try horizontal
               const startCol = c - idx;
-              if (startCol >= 0 && startCol + word.length <= size) {
-                if (canPlaceWord(grid, word, r, startCol, true)) {
-                  intersections.push({ row: r, col: startCol, horizontal: true });
-                }
-              }
-              // Try vertical
+              if (startCol >= 0 && startCol + word.length <= size && canPlaceWord(grid, word, r, startCol, true))
+                intersections.push({ row: r, col: startCol, horizontal: true });
               const startRow = r - idx;
-              if (startRow >= 0 && startRow + word.length <= size) {
-                if (canPlaceWord(grid, word, startRow, c, false)) {
-                  intersections.push({ row: startRow, col: c, horizontal: false });
-                }
-              }
+              if (startRow >= 0 && startRow + word.length <= size && canPlaceWord(grid, word, startRow, c, false))
+                intersections.push({ row: startRow, col: c, horizontal: false });
             }
           }
         }
@@ -178,25 +155,17 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
         if (intersections.length > 0) {
           const choice = intersections[Math.floor(Math.random() * intersections.length)];
           placeWord(grid, word, reference, item.referenceHeading, item.referenceDesc, choice.row, choice.col, choice.horizontal);
-          placed.push({
-            referenceNo: reference,
-            word,
-            referenceHeading: item.referenceHeading,
-            referenceDesc: item.referenceDesc,
-          });
+          placed.push({ referenceNo: reference, word, referenceHeading: item.referenceHeading, referenceDesc: item.referenceDesc });
           reference++;
         }
       }
       return { grid, placed };
     };
 
-    // Retry multiple times to get best connected layout
     let bestResult = tryGenerate();
     for (let attempt = 0; attempt < 5; attempt++) {
       const result = tryGenerate();
-      if (result.placed.length > bestResult.placed.length) {
-        bestResult = result;
-      }
+      if (result.placed.length > bestResult.placed.length) bestResult = result;
     }
     return bestResult;
   };
@@ -256,6 +225,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     <div className="min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-8 text-white">
       <h2 className="text-3xl font-bold text-center mb-8">🧩 Crossword Puzzle Generator</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+        {/* LEFT SIDE */}
         <div className="flex flex-col items-center justify-start">
           <div
             className="grid bg-purple-800 p-3 rounded-xl shadow-lg mb-6"
@@ -266,21 +236,25 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
             }}
           >
             {matrix.flatMap((row, rIdx) =>
-              row.map((cell, cIdx) => (
-                <div
-                  key={`${rIdx}-${cIdx}`}
-                  className={`relative flex items-center justify-center font-bold border ${
-                    cell.isPattern ? "bg-white text-black border-black" : "bg-purple-700 border-purple-700"
-                  } rounded-sm text-lg`}
-                >
-                  {cell.referenceNo && (
-                    <span className="absolute text-[0.6rem] top-[2px] left-[4px] text-gray-600 font-semibold">
-                      {cell.referenceNo}
-                    </span>
-                  )}
-                  {cell.isPattern ? cell.aplhabet.toUpperCase() : ""}
-                </div>
-              ))
+              row.map((cell, cIdx) => {
+                const isEmpty = cell.referenceNo === null && !cell.isPattern;
+                return (
+                  <div
+                    key={`${rIdx}-${cIdx}`}
+                    className={`relative flex items-center justify-center font-bold border rounded-sm text-lg transition-colors duration-200
+                      ${isEmpty ? "bg-white/10 border-purple-500" : ""}
+                      ${cell.isPattern ? "bg-white text-black border-black" : ""}
+                    `}
+                  >
+                    {cell.referenceNo && (
+                      <span className="absolute text-[0.6rem] top-[2px] left-[4px] text-gray-600 font-semibold">
+                        {cell.referenceNo}
+                      </span>
+                    )}
+                    {cell.referenceNo === null ? "" : cell.aplhabet.toUpperCase()}
+                  </div>
+                );
+              })
             )}
           </div>
 
@@ -320,7 +294,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Manage Words */}
+        {/* RIGHT COLUMN */}
         <div className="bg-purple-800 rounded-xl p-5 shadow-md">
           <h3 className="text-lg font-semibold mb-4">Manage Words & Clues</h3>
           <div className="space-y-2 mb-5">
