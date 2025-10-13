@@ -7,7 +7,7 @@ const page = () => {
   return (
     <div>
       {/* <LocateItComp /> */}
-      <CrosswordPuzzle wordsInput={wordsInput} />
+      <CrosswordPuzzle />
     </div>
   )
 }
