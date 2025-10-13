@@ -56,7 +56,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     }
   };
 
-  // --- Crossword Generation Helpers ---
+  // --- Crossword Helpers ---
   const createEmptyCell = (): CrosswordCell => ({
     isPattern: false,
     aplhabet: "",
@@ -109,70 +109,72 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     }
   };
 
-  const findIntersections = (grid: CrosswordCell[][], word: string) => {
-    const intersections: { row: number; col: number; horizontal: boolean }[] = [];
+  // --- Improved Connected Crossword Generator ---
+  const generateCrossword = (): {
+    grid: CrosswordCell[][];
+    placed: {
+      referenceNo: number;
+      word: string;
+      referenceHeading: string;
+      referenceDesc: string;
+    }[];
+  } => {
+    const tryGenerate = () => {
+      const grid = createEmptyMatrix();
+      const placed: {
+        referenceNo: number;
+        word: string;
+        referenceHeading: string;
+        referenceDesc: string;
+      }[] = [];
+      let reference = 1;
 
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        const cell = grid[r][c];
-        if (cell.isPattern && word.includes(cell.aplhabet.toLowerCase())) {
-          const idx = word.indexOf(cell.aplhabet.toLowerCase());
+      const placeFirstWord = (wordData: WordData) => {
+        const startRow = Math.floor(size / 2);
+        const startCol = Math.floor((size - wordData.word.length) / 2);
+        placeWord(grid, wordData.word.toLowerCase(), reference, wordData.referenceHeading, wordData.referenceDesc, startRow, startCol, true);
+        placed.push({
+          referenceNo: reference,
+          word: wordData.word.toLowerCase(),
+          referenceHeading: wordData.referenceHeading,
+          referenceDesc: wordData.referenceDesc,
+        });
+        reference++;
+      };
 
-          // Try horizontally
-          const startCol = c - idx;
-          if (startCol >= 0 && startCol + word.length <= size) {
-            if (canPlaceWord(grid, word, r, startCol, true)) {
-              intersections.push({ row: r, col: startCol, horizontal: true });
-            }
-          }
-
-          // Try vertically
-          const startRow = r - idx;
-          if (startRow >= 0 && startRow + word.length <= size) {
-            if (canPlaceWord(grid, word, startRow, c, false)) {
-              intersections.push({ row: startRow, col: c, horizontal: false });
+      const findIntersections = (word: string) => {
+        const intersections: { row: number; col: number; horizontal: boolean }[] = [];
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            const cell = grid[r][c];
+            if (cell.isPattern && word.includes(cell.aplhabet.toLowerCase())) {
+              const idx = word.indexOf(cell.aplhabet.toLowerCase());
+              // Try horizontal
+              const startCol = c - idx;
+              if (startCol >= 0 && startCol + word.length <= size) {
+                if (canPlaceWord(grid, word, r, startCol, true)) {
+                  intersections.push({ row: r, col: startCol, horizontal: true });
+                }
+              }
+              // Try vertical
+              const startRow = r - idx;
+              if (startRow >= 0 && startRow + word.length <= size) {
+                if (canPlaceWord(grid, word, startRow, c, false)) {
+                  intersections.push({ row: startRow, col: c, horizontal: false });
+                }
+              }
             }
           }
         }
-      }
-    }
+        return intersections;
+      };
 
-    return intersections;
-  };
-
-  const generateCrossword = (): {
-    grid: CrosswordCell[][];
-    placed: { referenceNo: number; word: string; referenceHeading: string; referenceDesc: string }[];
-  } => {
-    let bestGrid: CrosswordCell[][] = [];
-    let bestPlaced: { referenceNo: number; word: string; referenceHeading: string; referenceDesc: string }[] = [];
-    let maxPlaced = 0;
-
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const grid = createEmptyMatrix();
-      const placed: { referenceNo: number; word: string; referenceHeading: string; referenceDesc: string }[] = [];
-      let reference = 1;
-
-      // place first word in the middle
-      if (wordsInput.length > 0) {
-        const first = wordsInput[0];
-        const midRow = Math.floor(size / 2);
-        const startCol = Math.floor((size - first.word.length) / 2);
-        placeWord(grid, first.word.toLowerCase(), reference, first.referenceHeading, first.referenceDesc, midRow, startCol, true);
-        placed.push({
-          referenceNo: reference,
-          word: first.word.toLowerCase(),
-          referenceHeading: first.referenceHeading,
-          referenceDesc: first.referenceDesc,
-        });
-        reference++;
-      }
+      if (wordsInput.length > 0) placeFirstWord(wordsInput[0]);
 
       for (let i = 1; i < wordsInput.length; i++) {
         const item = wordsInput[i];
         const word = item.word.toLowerCase();
-        const intersections = findIntersections(grid, word);
-
+        const intersections = findIntersections(word);
         if (intersections.length > 0) {
           const choice = intersections[Math.floor(Math.random() * intersections.length)];
           placeWord(grid, word, reference, item.referenceHeading, item.referenceDesc, choice.row, choice.col, choice.horizontal);
@@ -185,15 +187,18 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
           reference++;
         }
       }
+      return { grid, placed };
+    };
 
-      if (placed.length > maxPlaced) {
-        bestGrid = grid.map(row => row.map(cell => ({ ...cell })));
-        bestPlaced = [...placed];
-        maxPlaced = placed.length;
+    // Retry multiple times to get best connected layout
+    let bestResult = tryGenerate();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const result = tryGenerate();
+      if (result.placed.length > bestResult.placed.length) {
+        bestResult = result;
       }
     }
-
-    return { grid: bestGrid, placed: bestPlaced };
+    return bestResult;
   };
 
   useEffect(() => {
@@ -202,15 +207,11 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     setPlacedWords(placed);
   }, [wordsInput, size]);
 
-  // --- CRUD for Words ---
+  // --- CRUD ---
   const addWord = () => {
     const word = newWord.trim().toLowerCase();
     if (!word) return;
-    const newItem: WordData = {
-      word,
-      referenceHeading: newHeading.trim(),
-      referenceDesc: newDesc.trim(),
-    };
+    const newItem: WordData = { word, referenceHeading: newHeading.trim(), referenceDesc: newDesc.trim() };
     setWordsInput([...wordsInput, newItem]);
     setNewWord("");
     setNewHeading("");
@@ -223,15 +224,11 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     setWordsInput(updated);
   };
 
-  const deleteWord = (index: number) => {
-    setWordsInput(wordsInput.filter((_, i) => i !== index));
-  };
+  const deleteWord = (index: number) => setWordsInput(wordsInput.filter((_, i) => i !== index));
 
-  // --- Submit to API ---
   const handleSubmit = async () => {
     try {
       setStatus("submitting");
-
       const payload = {
         title: "Crossword Puzzle",
         description: "Solve the crossword based on the given clues related to the Surah.",
@@ -240,20 +237,15 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
         crosswordPuzzleMatrix: matrix,
         createdBy: "670f9c12ab4e89a987654321",
       };
-
       const res = await fetch("http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
       if (!res.ok) throw new Error("Failed to save crossword");
-
-      const data = await res.json();
-      console.log("✅ Crossword saved successfully:", data);
       setStatus("success");
     } catch (err) {
-      console.error("❌ Error saving crossword:", err);
+      console.error(err);
       setStatus("error");
     } finally {
       setTimeout(() => setStatus("idle"), 3000);
@@ -263,9 +255,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-8 text-white">
       <h2 className="text-3xl font-bold text-center mb-8">🧩 Crossword Puzzle Generator</h2>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-6xl mx-auto">
-        {/* LEFT COLUMN */}
         <div className="flex flex-col items-center justify-start">
           <div
             className="grid bg-purple-800 p-3 rounded-xl shadow-lg mb-6"
@@ -305,7 +295,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
 
             <div
               ref={sliderRef}
-              className="flex overflow-x-auto gap-4 scroll-smooth px-10 py-4 scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-800 hover:scrollbar-thumb-purple-300 transition-all duration-300"
+              className="flex overflow-x-auto gap-4 scroll-smooth px-10 py-4 scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-800 hover:scrollbar-thumb-purple-300"
             >
               {placedWords.map((item) => (
                 <div
@@ -330,39 +320,18 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: CRUD */}
+        {/* RIGHT COLUMN: Manage Words */}
         <div className="bg-purple-800 rounded-xl p-5 shadow-md">
           <h3 className="text-lg font-semibold mb-4">Manage Words & Clues</h3>
-
-          {/* Add Word */}
           <div className="space-y-2 mb-5">
-            <input
-              type="text"
-              value={newWord}
-              onChange={(e) => setNewWord(e.target.value)}
-              placeholder="Enter word"
-              className="w-full bg-purple-700 px-3 py-2 rounded-lg focus:outline-none"
-            />
-            <input
-              type="text"
-              value={newHeading}
-              onChange={(e) => setNewHeading(e.target.value)}
-              placeholder="Reference heading"
-              className="w-full bg-purple-700 px-3 py-2 rounded-lg focus:outline-none"
-            />
-            <input
-              type="text"
-              value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-              placeholder="Reference description"
-              className="w-full bg-purple-700 px-3 py-2 rounded-lg focus:outline-none"
-            />
+            <input type="text" value={newWord} onChange={(e) => setNewWord(e.target.value)} placeholder="Enter word" className="w-full bg-purple-700 px-3 py-2 rounded-lg" />
+            <input type="text" value={newHeading} onChange={(e) => setNewHeading(e.target.value)} placeholder="Reference heading" className="w-full bg-purple-700 px-3 py-2 rounded-lg" />
+            <input type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Reference description" className="w-full bg-purple-700 px-3 py-2 rounded-lg" />
             <button onClick={addWord} className="w-full bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-semibold">
               ➕ Add Word
             </button>
           </div>
 
-          {/* Word List */}
           <div className="space-y-3 max-h-[450px] overflow-y-auto scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-900 pr-2">
             {wordsInput.map((item, index) => (
               <div key={index} className="bg-purple-700 p-3 rounded-lg flex flex-col gap-2">
@@ -370,54 +339,26 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                   <span className="font-semibold">
                     #{index + 1}: {item.word.toUpperCase()}
                   </span>
-                  <button
-                    onClick={() => deleteWord(index)}
-                    className="bg-red-500 hover:bg-red-400 text-white px-2 py-1 rounded"
-                  >
+                  <button onClick={() => deleteWord(index)} className="bg-red-500 hover:bg-red-400 text-white px-2 py-1 rounded">
                     🗑
                   </button>
                 </div>
-                <input
-                  type="text"
-                  value={item.referenceHeading}
-                  onChange={(e) => updateWordField(index, "referenceHeading", e.target.value)}
-                  placeholder="Heading"
-                  className="bg-purple-600 text-white px-2 py-1 rounded focus:outline-none"
-                />
-                <input
-                  type="text"
-                  value={item.referenceDesc}
-                  onChange={(e) => updateWordField(index, "referenceDesc", e.target.value)}
-                  placeholder="Description"
-                  className="bg-purple-600 text-white px-2 py-1 rounded focus:outline-none"
-                />
+                <input type="text" value={item.referenceHeading} onChange={(e) => updateWordField(index, "referenceHeading", e.target.value)} placeholder="Heading" className="bg-purple-600 px-2 py-1 rounded" />
+                <input type="text" value={item.referenceDesc} onChange={(e) => updateWordField(index, "referenceDesc", e.target.value)} placeholder="Description" className="bg-purple-600 px-2 py-1 rounded" />
               </div>
             ))}
           </div>
 
-          {/* Grid Size */}
           <div className="mt-6 flex items-center gap-3">
-            <label htmlFor="size" className="text-sm font-medium">
-              Grid Size:
-            </label>
-            <select
-              id="size"
-              value={size}
-              onChange={(e) => setSize(Number(e.target.value))}
-              className="bg-purple-700 border border-purple-400 text-white rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-purple-400"
-            >
-              <option value={4}>4 × 4</option>
-              <option value={6}>6 × 6</option>
+            <label htmlFor="size" className="text-sm font-medium">Grid Size:</label>
+            <select id="size" value={size} onChange={(e) => setSize(Number(e.target.value))} className="bg-purple-700 border border-purple-400 text-white rounded-lg px-3 py-1">
+              <option value={8}>8 × 8</option>
               <option value={10}>10 × 10</option>
+              <option value={12}>12 × 12</option>
             </select>
           </div>
 
-          {/* Submit */}
-          <button
-            onClick={handleSubmit}
-            disabled={status === "submitting"}
-            className="w-full mt-4 bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-semibold text-white"
-          >
+          <button onClick={handleSubmit} disabled={status === "submitting"} className="w-full mt-4 bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-semibold">
             {status === "submitting" ? "Saving..." : "💾 Submit Crossword"}
           </button>
         </div>
