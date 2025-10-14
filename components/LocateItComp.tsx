@@ -1,178 +1,369 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import saudimap from "../public/saudimap.jpg";
 
-export default function LocateItComp() {
-  const mapRef = useRef(null);
-  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
-  const [hoveredCity, setHoveredCity] = useState(null);
-  const [selectedCity, setSelectedCity] = useState(null);
+type Point = {
+  id: string;
+  row: number; // 0..11
+  col: number; // 0..11
+  label?: string;
+};
 
-  const locationMapArr = [
-    {
-      cityName: "Riyadh",
-      lat: 24.7136,
-      lng: 46.6753,
-      description: "Capital of Saudi Arabia, known for its modern skyline.",
-    },
-    {
-      cityName: "Makkah",
-      lat: 21.3891,
-      lng: 39.8579,
-      description: "The holiest city in Islam, home to the Kaaba.",
-    },
-    {
-      cityName: "Jeddah",
-      lat: 21.5431,
-      lng: 39.2009,
-      description: "The second largest city in Saudi Arabia, known for its beaches.",
-    },
-    {
-      cityName: "Mecca",
-      lat: 21.4228,
-      lng: 39.8262,
-      description: "The holy city of Islam, home to the Masjid al-Haram.",
-    },
-    {
-      cityName: "Dammam",
-      lat: 26.3546,
-      lng: 49.8025,
-      description: "The third largest city in Saudi Arabia, known for its oil industry.",
-    },
-    {
-      cityName: "Tabuk",
-      lat: 28.3872,
-      lng: 36.6084,
-      description: "Known for its desert landscapes, Tabuk is a popular tourist destination.",
-    },
-    {
-      cityName: "Taif",
-      lat: 21.3333,
-      lng: 40.4167,
-      description: "Known for its old city walls and historical sites, Taif is a popular tourist destination.",
-    },
-    {
-      cityName: "Medina",
-      lat: 24.5247,
-      lng: 39.5692,
-      description: "Second holiest city, location of the Prophet’s Mosque.",
-    },
-  ];
+const GRID = 12;
 
-  // Approx Saudi bounding box (adjust if needed)
-  const bounds = {
-    minLat: 15.5,
-    maxLat: 32.5,
-    minLng: 33,
-    maxLng: 57,
-  };
+export default function LocateItUploader() {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // Update map size dynamically
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null);
+  const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [points, setPoints] = useState<Point[]>([]);
+  const [hoverCell, setHoverCell] = useState<{ row: number; col: number } | null>(null);
+  const [pendingLabel, setPendingLabel] = useState<string>("");
+
+  // Keep container size responsive
   useEffect(() => {
-    const updateSize = () => {
-      if (mapRef.current) {
-        const rect = mapRef.current.getBoundingClientRect();
-        setMapSize({ width: rect.width, height: rect.height });
-      }
+    const update = () => {
+      if (!wrapRef.current) return;
+      const rect = wrapRef.current.getBoundingClientRect();
+      setContainerSize({ w: rect.width, h: rect.height });
     };
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Convert lat/lng → pixel coordinates
-  const getPosition = (lat:any, lng:any) => {
-    const { minLat, maxLat, minLng, maxLng } = bounds;
-    const x = ((lng - minLng) / (maxLng - minLng)) * mapSize.width;
-    const y = (1 - (lat - minLat) / (maxLat - minLat)) * mapSize.height;
-    return { x, y };
+  // Compute displayed aspect ratio to reserve space even before image loads
+  const aspect = useMemo(() => {
+    if (!imgNatural) return 1; // square until image loads
+    return imgNatural.w / imgNatural.h;
+  }, [imgNatural]);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    setImageSrc(url);
+    setPoints([]);
   };
 
+  const imgOnLoad = () => {
+    if (!imgRef.current) return;
+    setImgNatural({ w: imgRef.current.naturalWidth, h: imgRef.current.naturalHeight });
+    // ensure container size recalculates
+    if (wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect();
+      setContainerSize({ w: rect.width, h: rect.height });
+    }
+  };
+
+  // Map click (clientX/Y) to grid cell (row/col)
+  const toCellFromClick = (evt: React.MouseEvent<HTMLDivElement>) => {
+    if (!wrapRef.current) return null;
+    const rect = wrapRef.current.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+
+    // Account for object-contain letterboxing (image may not fill one dimension)
+    let drawW = rect.width;
+    let drawH = rect.height;
+
+    if (imgNatural) {
+      const containerAR = rect.width / rect.height;
+      const imageAR = imgNatural.w / imgNatural.h;
+      if (imageAR > containerAR) {
+        // image fills width, letterbox top/bottom
+        drawW = rect.width;
+        drawH = rect.width / imageAR;
+      } else {
+        // image fills height, letterbox left/right
+        drawH = rect.height;
+        drawW = rect.height * imageAR;
+      }
+    }
+
+    const offsetX = (rect.width - drawW) / 2;
+    const offsetY = (rect.height - drawH) / 2;
+
+    // If clicked outside the drawn image, ignore
+    if (x < offsetX || x > offsetX + drawW || y < offsetY || y > offsetY + drawH) {
+      return null;
+    }
+
+    const nx = (x - offsetX) / drawW; // 0..1
+    const ny = (y - offsetY) / drawH; // 0..1
+
+    const col = Math.min(GRID - 1, Math.max(0, Math.floor(nx * GRID)));
+    const row = Math.min(GRID - 1, Math.max(0, Math.floor(ny * GRID)));
+    return { row, col };
+  };
+
+  const togglePoint = (row: number, col: number, label?: string) => {
+    setPoints((prev) => {
+      const idx = prev.findIndex((p) => p.row === row && p.col === col);
+      if (idx >= 0) {
+        const next = [...prev];
+        next.splice(idx, 1);
+        return next;
+      }
+      return [...prev, { id: `${row}-${col}`, row, col, label: label?.trim() ? label : undefined }];
+    });
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const cell = toCellFromClick(e);
+    if (!cell) return;
+    togglePoint(cell.row, cell.col, pendingLabel);
+    setPendingLabel("");
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const cell = toCellFromClick(e);
+    setHoverCell(cell);
+  };
+
+  const markerStylePct = (row: number, col: number) => {
+    const left = ((col + 0.5) / GRID) * 100;
+    const top = ((row + 0.5) / GRID) * 100;
+    return { left: `${left}%`, top: `${top}%` };
+    // translates handled via CSS
+  };
+
+  const exportPoints = () => {
+    const blob = new Blob([JSON.stringify(points, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "locate-it-points.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearAll = () => setPoints([]);
+
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-      <div className="mb-8 text-4xl font-bold">Locate It</div>
+    <div className="min-h-screen bg-background flex flex-col items-center gap-6 p-4">
+      <h1 className="text-3xl font-bold">Locate It — 12×12 Grid on Uploaded Image</h1>
 
+      {/* Controls */}
+      <div className="w-full max-w-[900px] flex flex-col md:flex-row gap-3 items-stretch md:items-end">
+        <div className="flex-1">
+          <label className="block text-sm font-semibold mb-1">Upload image</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={onFileChange}
+            className="block w-full border rounded p-2"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="block text-sm font-semibold mb-1">Point label (optional)</label>
+          <input
+            value={pendingLabel}
+            onChange={(e) => setPendingLabel(e.target.value)}
+            placeholder="e.g., Target A"
+            className="w-full border rounded p-2"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={exportPoints}
+            className="px-3 py-2 rounded bg-black text-white border"
+            disabled={points.length === 0}
+          >
+            Export JSON
+          </button>
+          <button
+            onClick={clearAll}
+            className="px-3 py-2 rounded border"
+            disabled={points.length === 0}
+          >
+            Clear points
+          </button>
+        </div>
+      </div>
+
+      {/* Canvas */}
       <div
-        ref={mapRef}
-        className="relative w-full max-w-[500px] aspect-[1/1] border border-border rounded-lg overflow-hidden shadow-lg"
+        ref={wrapRef}
+        className="relative w-full max-w-[900px] border rounded-lg overflow-hidden shadow"
+        style={{
+          // Reserve vertical space using aspect ratio; falls back to square before image loads
+          aspectRatio: `${aspect} / 1`,
+          background: "#f8f8f8",
+          cursor: imageSrc ? "crosshair" : "default",
+        }}
+        onClick={imageSrc ? handleCanvasClick : undefined}
+        onMouseMove={imageSrc ? handleMouseMove : undefined}
+        onMouseLeave={() => setHoverCell(null)}
       >
-        <Image src={saudimap} alt="Saudi Map" fill className="object-contain" />
+        {/* Image */}
+        {imageSrc && (
+          <img
+            ref={imgRef}
+            src={imageSrc}
+            alt="Uploaded"
+            onLoad={imgOnLoad}
+            className="absolute inset-0 w-full h-full object-contain select-none pointer-events-none"
+            draggable={false}
+          />
+        )}
 
-        {mapSize.width > 0 &&
-          locationMapArr.map((loc, index) => {
-            const { x, y } = getPosition(loc.lat, loc.lng);
+        {/* 12×12 grid overlay */}
+        <div className="absolute inset-0 pointer-events-none">
+          {/* grid lines */}
+          {[...Array(GRID + 1)].map((_, i) => (
+            <div
+              key={`v-${i}`}
+              className="absolute top-0 h-full border-l border-neutral-300"
+              style={{ left: `${(i / GRID) * 100}%` }}
+            />
+          ))}
+          {[...Array(GRID + 1)].map((_, i) => (
+            <div
+              key={`h-${i}`}
+              className="absolute left-0 w-full border-t border-neutral-300"
+              style={{ top: `${(i / GRID) * 100}%` }}
+            />
+          ))}
+        </div>
 
-            return (
-              <div
-                key={index}
-                className="absolute"
-                style={{
-                  left: `${x}px`,
-                  top: `${y}px`,
-                  transform: "translate(-50%, -50%)",
-                }}
-                onMouseEnter={() => setHoveredCity(loc)}
-                onMouseLeave={() => setHoveredCity(null)}
-                onClick={() => setSelectedCity(loc)}
-              >
-                {/* City Marker */}
-                <motion.div
-                  className="w-4 h-4 bg-red-600 rounded-full shadow-md cursor-pointer border-2 border-white"
-                  whileHover={{ scale: 1.3 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                />
-              </div>
-            );
-          })}
-
-        {/* Hover Tooltip */}
+        {/* Hover cell highlight */}
         <AnimatePresence>
-          {hoveredCity && (
+          {hoverCell && (
             <motion.div
-              key={hoveredCity.cityName}
-              className="absolute bg-white text-black text-sm px-3 py-1 rounded-md shadow-lg"
+              key={`hover-${hoverCell.row}-${hoverCell.col}`}
+              className="absolute bg-black/5"
               style={{
-                left: `${getPosition(hoveredCity.lat, hoveredCity.lng).x}px`,
-                top: `${getPosition(hoveredCity.lat, hoveredCity.lng).y - 25}px`,
-                transform: "translate(-50%, -100%)",
+                left: `${(hoverCell.col / GRID) * 100}%`,
+                top: `${(hoverCell.row / GRID) * 100}%`,
+                width: `${(1 / GRID) * 100}%`,
+                height: `${(1 / GRID) * 100}%`,
               }}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              transition={{ duration: 0.2 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Markers */}
+        {points.map((p) => (
+          <div
+            key={p.id}
+            className="absolute"
+            style={{
+              ...markerStylePct(p.row, p.col),
+              transform: "translate(-50%, -50%)",
+              pointerEvents: "none",
+            }}
+          >
+            <div className="relative flex items-center justify-center w-5 h-5 rounded-full bg-red-600 border-2 border-white shadow" />
+          </div>
+        ))}
+
+        {/* Marker labels */}
+        {points.map((p) =>
+          p.label ? (
+            <div
+              key={`label-${p.id}`}
+              className="absolute text-xs bg-white/90 backdrop-blur px-2 py-0.5 rounded border shadow"
+              style={{
+                left: `${((p.col + 0.5) / GRID) * 100}%`,
+                top: `${((p.row + 0.5) / GRID) * 100 - 4}%`,
+                transform: "translate(-50%, -100%)",
+                pointerEvents: "none",
+                whiteSpace: "nowrap",
+              }}
             >
-              {hoveredCity.cityName}
+              {p.label}
+            </div>
+          ) : null
+        )}
+
+        {/* Cell coordinates tooltip on hover */}
+        <AnimatePresence>
+          {hoverCell && (
+            <motion.div
+              key={`tip-${hoverCell.row}-${hoverCell.col}`}
+              className="absolute text-xs bg-white px-2 py-1 rounded shadow border"
+              style={{
+                left: `${((hoverCell.col + 0.5) / GRID) * 100}%`,
+                top: `${((hoverCell.row + 0.5) / GRID) * 100 - 4}%`,
+                transform: "translate(-50%, -100%)",
+                pointerEvents: "none",
+              }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+            >
+              Row {hoverCell.row + 1}, Col {hoverCell.col + 1}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Click Info Card */}
-      <AnimatePresence>
-        {selectedCity && (
-          <motion.div
-            className="mt-6 w-full max-w-[400px] bg-white text-black rounded-lg p-4 shadow-md border"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-          >
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-xl font-bold">{selectedCity.cityName}</h3>
-              <button
-                className="text-gray-500 hover:text-black"
-                onClick={() => setSelectedCity(null)}
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-sm">{selectedCity.lat} {selectedCity.lng}</p>
-            <p className="text-sm">{selectedCity.description}</p>
-          </motion.div>
+      {/* Points list */}
+      <div className="w-full max-w-[900px]">
+        <h2 className="text-lg font-semibold mb-2">Selected Points ({points.length})</h2>
+        {points.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Click on the grid to add points. Click again on the same cell to remove.</p>
+        ) : (
+          <div className="overflow-x-auto border rounded-lg">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-50">
+                <tr>
+                  <th className="text-left p-2 border-b">#</th>
+                  <th className="text-left p-2 border-b">Row</th>
+                  <th className="text-left p-2 border-b">Col</th>
+                  <th className="text-left p-2 border-b">Label</th>
+                  <th className="text-left p-2 border-b">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {points
+                  .slice()
+                  .sort((a, b) => a.row - b.row || a.col - b.col)
+                  .map((p, i) => (
+                    <tr key={`row-${p.id}`} className="odd:bg-white even:bg-neutral-50/40">
+                      <td className="p-2 border-b">{i + 1}</td>
+                      <td className="p-2 border-b">{p.row + 1}</td>
+                      <td className="p-2 border-b">{p.col + 1}</td>
+                      <td className="p-2 border-b">
+                        <input
+                          className="border rounded px-2 py-1 w-full"
+                          value={p.label ?? ""}
+                          onChange={(e) =>
+                            setPoints((prev) =>
+                              prev.map((q) => (q.id === p.id ? { ...q, label: e.target.value } : q))
+                            )
+                          }
+                          placeholder="(optional)"
+                        />
+                      </td>
+                      <td className="p-2 border-b">
+                        <button
+                          className="px-2 py-1 text-red-600 border rounded"
+                          onClick={() =>
+                            setPoints((prev) => prev.filter((q) => !(q.row === p.row && q.col === p.col)))
+                          }
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </AnimatePresence>
+      </div>
+
+      <div className="text-xs text-neutral-500 mt-2">
+        Tip: Click a grid cell to add/remove a point. Use the “Point label” field before clicking to attach a label.
+      </div>
     </div>
   );
 }
