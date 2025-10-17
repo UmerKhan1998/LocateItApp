@@ -318,7 +318,7 @@ const page = () => {
     <div>
       {/* <LocateItComp /> */}
       <MazeComp gridData={gridData} />
-      {/* <CrosswordPuzzle /> */}
+      <CrosswordPuzzle />
     </div>
   );
 };
