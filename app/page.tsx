@@ -317,8 +317,8 @@ const page = () => {
   return (
     <div>
       {/* <LocateItComp /> */}
-      <MazeComp gridData={gridData} />
-      <CrosswordPuzzle />
+      <MazeComp />
+      {/* <CrosswordPuzzle /> */}
     </div>
   );
 };
