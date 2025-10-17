@@ -1,25 +1,27 @@
 "use client";
 import React, { useMemo, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 
 /** ---------- Types ---------- */
 type CrosswordCell = {
-  isLetter: boolean; // this square is part of any word
-  ch: string; // letter (lowercase)
-  startNo: number | null; // printed number if this is a word start
+  isLetter: boolean;
+  ch: string;
+  startNo: number | null;
   acrossId?: number | null;
   downId?: number | null;
-  prefill?: boolean; // show this letter even when answers are hidden
+  prefill?: boolean;
 };
 
 type WordData = {
+  id: string;
   word: string;
   referenceHeading: string;
   referenceDesc: string;
 };
 
 interface CrosswordMatrixProps {
-  defaultWords?: WordData[];
-  defaultSize?: number; // 8 | 10 | 15
+  defaultWords?: Omit<WordData, "id">[];
+  defaultSize?: number;
 }
 
 /** ---------- Helpers ---------- */
@@ -51,43 +53,29 @@ function canPlace(
   const H = grid.length;
   const W = grid[0].length;
 
-  // Validate starting point
   if (r < 0 || r >= H || c < 0 || c >= W) return false;
-
-  // Check end bounds
   const endR = r + dr * (word.length - 1);
   const endC = c + dc * (word.length - 1);
   if (endR < 0 || endR >= H || endC < 0 || endC >= W) return false;
 
-  // Check before start
   const prevR = r - dr;
   const prevC = c - dc;
-  if (prevR >= 0 && prevR < H && prevC >= 0 && prevC < W) {
-    if (grid[prevR]?.[prevC]?.isLetter) return false;
-  }
+  if (prevR >= 0 && prevC >= 0 && grid[prevR]?.[prevC]?.isLetter) return false;
 
-  // Check after end
   const nextR = endR + dr;
   const nextC = endC + dc;
-  if (nextR >= 0 && nextR < H && nextC >= 0 && nextC < W) {
-    if (grid[nextR]?.[nextC]?.isLetter) return false;
-  }
+  if (nextR < H && nextC < W && grid[nextR]?.[nextC]?.isLetter) return false;
 
-  // Each letter
   for (let i = 0; i < word.length; i++) {
     const rr = r + dr * i;
     const cc = c + dc * i;
-
-    // ✅ Prevent out-of-bounds access
     if (rr < 0 || rr >= H || cc < 0 || cc >= W) return false;
 
-    const cell = grid[rr]?.[cc];
+    const cell = grid[rr][cc];
     if (!cell) return false;
 
-    // Letter mismatch
     if (cell.isLetter && cell.ch !== word[i]) return false;
 
-    // Adjacent check
     if (!cell.isLetter) {
       if (dir === "ACROSS") {
         const up = rr - 1;
@@ -102,6 +90,7 @@ function canPlace(
       }
     }
   }
+
   return true;
 }
 
@@ -125,7 +114,7 @@ function placeWord(
 /** Compute numbering and clues (Across & Down) */
 function buildNumbersAndClues(
   grid: CrosswordCell[][],
-  placedSeq: { word: string; heading: string; desc: string }[]
+  placedSeq: { id: string; word: string; heading: string; desc: string }[]
 ) {
   const H = grid.length;
   const W = grid[0].length;
@@ -133,6 +122,7 @@ function buildNumbersAndClues(
 
   type Clue = {
     number: number;
+    id: string;
     word: string;
     heading: string;
     desc: string;
@@ -157,12 +147,15 @@ function buildNumbersAndClues(
     return s;
   };
 
-  const metaLeft = placedSeq.slice();
-  const takeMeta = (w: string) => {
-    const idx = metaLeft.findIndex((m) => m.word === w);
-    if (idx >= 0) return metaLeft.splice(idx, 1)[0];
-    return { word: w, heading: "Clue", desc: "—" };
-  };
+  const metaMap = new Map(placedSeq.map((m) => [m.word.toLowerCase(), m]));
+
+  const takeMeta = (w: string) =>
+    metaMap.get(w.toLowerCase()) || {
+      id: uuidv4(),
+      word: w,
+      heading: "Clue",
+      desc: "—",
+    };
 
   for (let r = 0; r < H; r++) {
     for (let c = 0; c < W; c++) {
@@ -184,6 +177,7 @@ function buildNumbersAndClues(
           const meta = takeMeta(w);
           across.push({
             number,
+            id: meta.id,
             word: w,
             heading: meta.heading,
             desc: meta.desc,
@@ -197,6 +191,7 @@ function buildNumbersAndClues(
           const meta = takeMeta(w);
           down.push({
             number,
+            id: meta.id,
             word: w,
             heading: meta.heading,
             desc: meta.desc,
@@ -219,10 +214,11 @@ function generateGrid(
   words: WordData[]
 ): {
   grid: CrosswordCell[][];
-  placedMeta: { word: string; heading: string; desc: string }[];
+  placedMeta: { id: string; word: string; heading: string; desc: string }[];
 } {
   const items = words
     .map((w) => ({
+      id: w.id,
       word: w.word.trim().toLowerCase(),
       heading: w.referenceHeading,
       desc: w.referenceDesc,
@@ -239,31 +235,27 @@ function generateGrid(
 
     if (!items.length) return { grid, placedMeta: [] };
 
-    // place first (longest) horizontally near center
-    {
-      const first = items[0];
-      const r = Math.floor(size / 2);
-      const c = Math.max(0, Math.floor((size - first.word.length) / 2));
-      let ok = false;
-      if (canPlace(grid, r, c, first.word, "ACROSS")) {
-        placeWord(grid, r, c, first.word, "ACROSS");
-        placed.push(first);
-        ok = true;
-      } else {
-        // scan any slot
-        outer: for (let rr = 0; rr < size; rr++) {
-          for (let cc = 0; cc < size; cc++) {
-            if (canPlace(grid, rr, cc, first.word, "ACROSS")) {
-              placeWord(grid, rr, cc, first.word, "ACROSS");
-              placed.push(first);
-              ok = true;
-              break outer;
-            }
+    const first = items[0];
+    const r = Math.floor(size / 2);
+    const c = Math.max(0, Math.floor((size - first.word.length) / 2));
+    let ok = false;
+    if (canPlace(grid, r, c, first.word, "ACROSS")) {
+      placeWord(grid, r, c, first.word, "ACROSS");
+      placed.push(first);
+      ok = true;
+    } else {
+      outer: for (let rr = 0; rr < size; rr++) {
+        for (let cc = 0; cc < size; cc++) {
+          if (canPlace(grid, rr, cc, first.word, "ACROSS")) {
+            placeWord(grid, rr, cc, first.word, "ACROSS");
+            placed.push(first);
+            ok = true;
+            break outer;
           }
         }
       }
-      if (!ok) continue; // retry this attempt
     }
+    if (!ok) continue;
 
     let dir: "ACROSS" | "DOWN" = "DOWN";
     for (let i = 1; i < items.length; i++) {
@@ -276,7 +268,6 @@ function generateGrid(
           if (!cell.isLetter) continue;
           for (let k = 0; k < word.length; k++) {
             if (word[k] !== cell.ch) continue;
-
             if (dir === "ACROSS") {
               const startC = c - k;
               if (canPlace(grid, r, startC, word, "ACROSS"))
@@ -346,51 +337,27 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       referenceHeading: "Animal",
       referenceDesc: "A small mammal with long ears and a love for carrots",
     },
-    {
-      word: "BIRD",
-      referenceHeading: "Creature",
-      referenceDesc: "A feathered animal that can usually fly",
-    },
-    {
-      word: "MINT",
-      referenceHeading: "Herb",
-      referenceDesc: "A fragrant plant often used for flavoring or freshness",
-    },
-    {
-      word: "TOPIC",
-      referenceHeading: "Subject",
-      referenceDesc: "The main idea or theme of a discussion",
-    },
-    {
-      word: "TREE",
-      referenceHeading: "Plant",
-      referenceDesc: "A tall plant with a trunk, branches, and leaves",
-    },
   ],
-  defaultSize = 10, // show 10×10 first
+  defaultSize = 10,
 }) => {
-  const [size, setSize] = useState<number>(defaultSize); // 8 | 10 | 15
-  const [wordsInput, setWordsInput] = useState<WordData[]>(defaultWords);
-  console.log("wordsInput:", wordsInput);
+  const [size, setSize] = useState<number>(defaultSize);
+  const [wordsInput, setWordsInput] = useState<WordData[]>(
+    defaultWords.map((w) => ({ ...w, id: uuidv4() }))
+  );
   const [showAnswers, setShowAnswers] = useState(false);
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
   >("idle");
 
-  // UI inputs
   const [newWord, setNewWord] = useState("");
   const [newHeading, setNewHeading] = useState("");
   const [newDesc, setNewDesc] = useState("");
 
-  // generate on inputs/size
   const { grid, across, down, placedList } = useMemo(() => {
     const { grid: fullGrid, placedMeta } = generateGrid(size, wordsInput);
     const { across, down } = buildNumbersAndClues(fullGrid, placedMeta);
-
-    // prefill the first letter of each word (Across & Down)
     for (const a of across) fullGrid[a.row][a.col].prefill = true;
     for (const d of down) fullGrid[d.row][d.col].prefill = true;
-
     return { grid: fullGrid, across, down, placedList: placedMeta };
   }, [size, wordsInput]);
 
@@ -409,6 +376,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     setWordsInput((p) => [
       ...p,
       {
+        id: uuidv4(),
         word: w.toUpperCase(),
         referenceHeading: newHeading.trim() || "Clue",
         referenceDesc: newDesc.trim() || "—",
@@ -422,7 +390,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   const updateWordField = (i: number, field: keyof WordData, value: string) => {
     setWordsInput((prev) => {
       const cp = [...prev];
-      (cp[i] as any)[field] = value;
+      cp[i] = { ...cp[i], [field]: value };
       return cp;
     });
   };
@@ -439,7 +407,11 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
         surahId: "66607aa1d7639ce76b12ff08",
         typeId: "68e5ff0422e84795f82789c4",
         crosswordPuzzleMatrix: grid,
-        references: wordsInput,
+        references: placedList.map((p) => ({
+          word: p.word.toUpperCase(),
+          referenceHeading: p.heading,
+          referenceDesc: p.desc,
+        })),
       };
       const res = await fetch(
         "http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create",
