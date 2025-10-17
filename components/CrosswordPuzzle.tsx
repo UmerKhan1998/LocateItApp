@@ -51,45 +51,54 @@ function canPlace(
   const H = grid.length;
   const W = grid[0].length;
 
-  // end bounds
+  // Validate starting point
+  if (r < 0 || r >= H || c < 0 || c >= W) return false;
+
+  // Check end bounds
   const endR = r + dr * (word.length - 1);
   const endC = c + dc * (word.length - 1);
   if (endR < 0 || endR >= H || endC < 0 || endC >= W) return false;
 
-  // cell before start
+  // Check before start
   const prevR = r - dr;
   const prevC = c - dc;
   if (prevR >= 0 && prevR < H && prevC >= 0 && prevC < W) {
-    if (grid[prevR][prevC].isLetter) return false;
+    if (grid[prevR]?.[prevC]?.isLetter) return false;
   }
-  // cell after end
+
+  // Check after end
   const nextR = endR + dr;
   const nextC = endC + dc;
   if (nextR >= 0 && nextR < H && nextC >= 0 && nextC < W) {
-    if (grid[nextR][nextC].isLetter) return false;
+    if (grid[nextR]?.[nextC]?.isLetter) return false;
   }
 
-  // each step
+  // Each letter
   for (let i = 0; i < word.length; i++) {
     const rr = r + dr * i;
     const cc = c + dc * i;
-    const cell = grid[rr][cc];
 
-    // letter match if occupied
-    if (cell?.isLetter && cell?.ch !== word[i]) return false;
+    // ✅ Prevent out-of-bounds access
+    if (rr < 0 || rr >= H || cc < 0 || cc >= W) return false;
 
-    // side adjacency check (perpendicular neighbors) only if this isn't a crossing
-    if (!cell?.isLetter) {
+    const cell = grid[rr]?.[cc];
+    if (!cell) return false;
+
+    // Letter mismatch
+    if (cell.isLetter && cell.ch !== word[i]) return false;
+
+    // Adjacent check
+    if (!cell.isLetter) {
       if (dir === "ACROSS") {
         const up = rr - 1;
         const dn = rr + 1;
-        if (up >= 0 && grid[up][cc].isLetter) return false;
-        if (dn < H && grid[dn][cc].isLetter) return false;
+        if (up >= 0 && grid[up]?.[cc]?.isLetter) return false;
+        if (dn < H && grid[dn]?.[cc]?.isLetter) return false;
       } else {
         const lf = cc - 1;
         const rt = cc + 1;
-        if (lf >= 0 && grid[rr][lf].isLetter) return false;
-        if (rt < W && grid[rr][rt].isLetter) return false;
+        if (lf >= 0 && grid[rr]?.[lf]?.isLetter) return false;
+        if (rt < W && grid[rr]?.[rt]?.isLetter) return false;
       }
     }
   }
