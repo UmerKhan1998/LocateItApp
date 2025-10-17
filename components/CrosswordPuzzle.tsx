@@ -1,6 +1,5 @@
 "use client";
 import React, { useMemo, useRef, useState } from "react";
-import { v4 as uuidv4 } from "uuid";
 
 /** ---------- Types ---------- */
 type CrosswordCell = {
@@ -13,15 +12,14 @@ type CrosswordCell = {
 };
 
 type WordData = {
-  id: string;
   word: string;
   referenceHeading: string;
   referenceDesc: string;
 };
 
 interface CrosswordMatrixProps {
-  defaultWords?: Omit<WordData, "id">[];
-  defaultSize?: number;
+  defaultWords?: WordData[];
+  defaultSize?: number; // 8 | 10 | 15
 }
 
 /** ---------- Helpers ---------- */
@@ -41,7 +39,7 @@ const directions = {
   DOWN: { dr: 1, dc: 0 },
 } as const;
 
-/** Crossword placement rules */
+/** Placement rules */
 function canPlace(
   grid: CrosswordCell[][],
   r: number,
@@ -53,44 +51,41 @@ function canPlace(
   const H = grid.length;
   const W = grid[0].length;
 
-  if (r < 0 || r >= H || c < 0 || c >= W) return false;
   const endR = r + dr * (word.length - 1);
   const endC = c + dc * (word.length - 1);
   if (endR < 0 || endR >= H || endC < 0 || endC >= W) return false;
 
   const prevR = r - dr;
   const prevC = c - dc;
-  if (prevR >= 0 && prevC >= 0 && grid[prevR]?.[prevC]?.isLetter) return false;
-
+  if (prevR >= 0 && prevR < H && prevC >= 0 && prevC < W) {
+    if (grid[prevR][prevC].isLetter) return false;
+  }
   const nextR = endR + dr;
   const nextC = endC + dc;
-  if (nextR < H && nextC < W && grid[nextR]?.[nextC]?.isLetter) return false;
+  if (nextR >= 0 && nextR < H && nextC >= 0 && nextC < W) {
+    if (grid[nextR][nextC].isLetter) return false;
+  }
 
   for (let i = 0; i < word.length; i++) {
     const rr = r + dr * i;
     const cc = c + dc * i;
-    if (rr < 0 || rr >= H || cc < 0 || cc >= W) return false;
-
     const cell = grid[rr][cc];
-    if (!cell) return false;
-
     if (cell.isLetter && cell.ch !== word[i]) return false;
 
     if (!cell.isLetter) {
       if (dir === "ACROSS") {
         const up = rr - 1;
         const dn = rr + 1;
-        if (up >= 0 && grid[up]?.[cc]?.isLetter) return false;
-        if (dn < H && grid[dn]?.[cc]?.isLetter) return false;
+        if (up >= 0 && grid[up][cc].isLetter) return false;
+        if (dn < H && grid[dn][cc].isLetter) return false;
       } else {
         const lf = cc - 1;
         const rt = cc + 1;
-        if (lf >= 0 && grid[rr]?.[lf]?.isLetter) return false;
-        if (rt < W && grid[rr]?.[rt]?.isLetter) return false;
+        if (lf >= 0 && grid[rr][lf].isLetter) return false;
+        if (rt < W && grid[rr][rt].isLetter) return false;
       }
     }
   }
-
   return true;
 }
 
@@ -111,10 +106,10 @@ function placeWord(
   }
 }
 
-/** Compute numbering and clues (Across & Down) */
+/** Numbering + clues */
 function buildNumbersAndClues(
   grid: CrosswordCell[][],
-  placedSeq: { id: string; word: string; heading: string; desc: string }[]
+  placedSeq: { word: string; heading: string; desc: string }[]
 ) {
   const H = grid.length;
   const W = grid[0].length;
@@ -122,7 +117,6 @@ function buildNumbersAndClues(
 
   type Clue = {
     number: number;
-    id: string;
     word: string;
     heading: string;
     desc: string;
@@ -147,58 +141,33 @@ function buildNumbersAndClues(
     return s;
   };
 
-  const metaMap = new Map(placedSeq.map((m) => [m.word.toLowerCase(), m]));
-
-  const takeMeta = (w: string) =>
-    metaMap.get(w.toLowerCase()) || {
-      id: uuidv4(),
-      word: w,
-      heading: "Clue",
-      desc: "—",
-    };
+  const metaLeft = placedSeq.slice();
+  const takeMeta = (w: string) => {
+    const idx = metaLeft.findIndex((m) => m.word === w);
+    if (idx >= 0) return metaLeft.splice(idx, 1)[0];
+    return { word: w, heading: "Clue", desc: "—" };
+  };
 
   for (let r = 0; r < H; r++) {
     for (let c = 0; c < W; c++) {
       if (!grid[r][c].isLetter) continue;
 
       const startAcross =
-        (c === 0 || !grid[r][c - 1].isLetter) &&
-        c + 1 < W &&
-        grid[r][c + 1].isLetter;
+        (c === 0 || !grid[r][c - 1].isLetter) && (c + 1 < W && grid[r][c + 1].isLetter);
       const startDown =
-        (r === 0 || !grid[r - 1][c].isLetter) &&
-        r + 1 < H &&
-        grid[r + 1][c].isLetter;
+        (r === 0 || !grid[r - 1][c].isLetter) && (r + 1 < H && grid[r + 1][c].isLetter);
 
       if (startAcross || startDown) {
         grid[r][c].startNo = number;
         if (startAcross) {
           const w = pull(r, c, "ACROSS");
           const meta = takeMeta(w);
-          across.push({
-            number,
-            id: meta.id,
-            word: w,
-            heading: meta.heading,
-            desc: meta.desc,
-            row: r,
-            col: c,
-            len: w.length,
-          });
+          across.push({ number, word: w, heading: meta.heading, desc: meta.desc, row: r, col: c, len: w.length });
         }
         if (startDown) {
           const w = pull(r, c, "DOWN");
           const meta = takeMeta(w);
-          down.push({
-            number,
-            id: meta.id,
-            word: w,
-            heading: meta.heading,
-            desc: meta.desc,
-            row: r,
-            col: c,
-            len: w.length,
-          });
+          down.push({ number, word: w, heading: meta.heading, desc: meta.desc, row: r, col: c, len: w.length });
         }
         number++;
       }
@@ -208,17 +177,13 @@ function buildNumbersAndClues(
   return { across, down };
 }
 
-/** Try to place all words with intersections, alternating directions. */
+/** Generator (intersections, alternating dir) */
 function generateGrid(
   size: number,
   words: WordData[]
-): {
-  grid: CrosswordCell[][];
-  placedMeta: { id: string; word: string; heading: string; desc: string }[];
-} {
+): { grid: CrosswordCell[][]; placedMeta: { word: string; heading: string; desc: string }[] } {
   const items = words
     .map((w) => ({
-      id: w.id,
       word: w.word.trim().toLowerCase(),
       heading: w.referenceHeading,
       desc: w.referenceDesc,
@@ -235,27 +200,30 @@ function generateGrid(
 
     if (!items.length) return { grid, placedMeta: [] };
 
-    const first = items[0];
-    const r = Math.floor(size / 2);
-    const c = Math.max(0, Math.floor((size - first.word.length) / 2));
-    let ok = false;
-    if (canPlace(grid, r, c, first.word, "ACROSS")) {
-      placeWord(grid, r, c, first.word, "ACROSS");
-      placed.push(first);
-      ok = true;
-    } else {
-      outer: for (let rr = 0; rr < size; rr++) {
-        for (let cc = 0; cc < size; cc++) {
-          if (canPlace(grid, rr, cc, first.word, "ACROSS")) {
-            placeWord(grid, rr, cc, first.word, "ACROSS");
-            placed.push(first);
-            ok = true;
-            break outer;
+    // place first (longest) horizontally near center
+    {
+      const first = items[0];
+      const r = Math.floor(size / 2);
+      const c = Math.max(0, Math.floor((size - first.word.length) / 2));
+      let ok = false;
+      if (canPlace(grid, r, c, first.word, "ACROSS")) {
+        placeWord(grid, r, c, first.word, "ACROSS");
+        placed.push(first);
+        ok = true;
+      } else {
+        outer: for (let rr = 0; rr < size; rr++) {
+          for (let cc = 0; cc < size; cc++) {
+            if (canPlace(grid, rr, cc, first.word, "ACROSS")) {
+              placeWord(grid, rr, cc, first.word, "ACROSS");
+              placed.push(first);
+              ok = true;
+              break outer;
+            }
           }
         }
       }
+      if (!ok) continue;
     }
-    if (!ok) continue;
 
     let dir: "ACROSS" | "DOWN" = "DOWN";
     for (let i = 1; i < items.length; i++) {
@@ -268,6 +236,7 @@ function generateGrid(
           if (!cell.isLetter) continue;
           for (let k = 0; k < word.length; k++) {
             if (word[k] !== cell.ch) continue;
+
             if (dir === "ACROSS") {
               const startC = c - k;
               if (canPlace(grid, r, startC, word, "ACROSS"))
@@ -322,62 +291,112 @@ function generateGrid(
 /** ---------- Component ---------- */
 const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   defaultWords = [
-    {
-      word: "HEAT",
-      referenceHeading: "Temperature",
-      referenceDesc: "Form of energy that causes things to become warm",
-    },
-    {
-      word: "APPLE",
-      referenceHeading: "Fruit",
-      referenceDesc: "A round fruit that keeps doctors away",
-    },
-    {
-      word: "RABBIT",
-      referenceHeading: "Animal",
-      referenceDesc: "A small mammal with long ears and a love for carrots",
-    },
+    { word: "HEAT", referenceHeading: "Temperature", referenceDesc: "Form of energy that causes things to become warm" },
+    { word: "APPLE", referenceHeading: "Fruit", referenceDesc: "A round fruit that keeps doctors away" },
+    { word: "RABBIT", referenceHeading: "Animal", referenceDesc: "A small mammal with long ears and a love for carrots" },
+    { word: "BIRD", referenceHeading: "Creature", referenceDesc: "A feathered animal that can usually fly" },
+    { word: "MINT", referenceHeading: "Herb", referenceDesc: "A fragrant plant often used for flavoring or freshness" },
+    { word: "TOPIC", referenceHeading: "Subject", referenceDesc: "The main idea or theme of a discussion" },
+    { word: "TREE", referenceHeading: "Plant", referenceDesc: "A tall plant with a trunk, branches, and leaves" },
   ],
   defaultSize = 10,
 }) => {
   const [size, setSize] = useState<number>(defaultSize);
-  const [wordsInput, setWordsInput] = useState<WordData[]>(
-    defaultWords.map((w) => ({ ...w, id: uuidv4() }))
-  );
+  const [wordsInput, setWordsInput] = useState<WordData[]>(defaultWords);
   const [showAnswers, setShowAnswers] = useState(false);
-  const [status, setStatus] = useState<
-    "idle" | "submitting" | "success" | "error"
-  >("idle");
+  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
+  // UI inputs
   const [newWord, setNewWord] = useState("");
   const [newHeading, setNewHeading] = useState("");
   const [newDesc, setNewDesc] = useState("");
 
-  const { grid, across, down, placedList } = useMemo(() => {
+  // generate on inputs/size
+  const { grid, across, down, placedList, wordNumberMap } = useMemo(() => {
     const { grid: fullGrid, placedMeta } = generateGrid(size, wordsInput);
     const { across, down } = buildNumbersAndClues(fullGrid, placedMeta);
+
+    // prefill first letters
     for (const a of across) fullGrid[a.row][a.col].prefill = true;
     for (const d of down) fullGrid[d.row][d.col].prefill = true;
-    return { grid: fullGrid, across, down, placedList: placedMeta };
+
+    // map: word -> list of numbers it owns in grid
+    const map = new Map<string, number[]>();
+    for (const a of across) {
+      const k = a.word.toUpperCase();
+      map.set(k, [...(map.get(k) ?? []), a.number]);
+    }
+    for (const d of down) {
+      const k = d.word.toUpperCase();
+      map.set(k, [...(map.get(k) ?? []), d.number]);
+    }
+
+    return {
+      grid: fullGrid,
+      across,
+      down,
+      placedList: placedMeta,
+      wordNumberMap: map,
+    };
   }, [size, wordsInput]);
 
   const sliderRef = useRef<HTMLDivElement | null>(null);
   const scrollSlider = (dir: "left" | "right") => {
     if (!sliderRef.current) return;
-    sliderRef.current.scrollBy({
-      left: dir === "left" ? -240 : 240,
-      behavior: "smooth",
-    });
+    sliderRef.current.scrollBy({ left: dir === "left" ? -240 : 240, behavior: "smooth" });
+  };
+
+  /** Check if a new word can connect to current grid */
+  const canConnectToGrid = (wordUpper: string) => {
+    const word = wordUpper.toLowerCase();
+    // If grid is empty (no letters), allow as seed
+    let hasAny = false;
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (grid[r]?.[c]?.isLetter) {
+          hasAny = true;
+          break;
+        }
+      }
+      if (hasAny) break;
+    }
+    if (!hasAny) return true;
+
+    // Try any intersecting placement
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const cell = grid[r]?.[c];
+        if (!cell?.isLetter) continue;
+
+        for (let k = 0; k < word.length; k++) {
+          if (word[k] !== cell.ch) continue;
+
+          const startC = c - k;
+          const startR = r - k;
+          if (canPlace(grid, r, startC, word, "ACROSS")) return true;
+          if (canPlace(grid, startR, c, word, "DOWN")) return true;
+        }
+      }
+    }
+    return false;
   };
 
   const addWord = () => {
-    const w = newWord.trim();
+    setErrorMsg("");
+    const w = newWord.trim().toUpperCase();
     if (!w) return;
+
+    // connectivity validation against current grid
+    if (!canConnectToGrid(w)) {
+      setErrorMsg(`“${w}” can’t connect to the existing crossword. Try another word or size.`);
+      return; // DO NOT add
+    }
+
     setWordsInput((p) => [
       ...p,
       {
-        id: uuidv4(),
-        word: w.toUpperCase(),
+        word: w,
         referenceHeading: newHeading.trim() || "Clue",
         referenceDesc: newDesc.trim() || "—",
       },
@@ -390,13 +409,12 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   const updateWordField = (i: number, field: keyof WordData, value: string) => {
     setWordsInput((prev) => {
       const cp = [...prev];
-      cp[i] = { ...cp[i], [field]: value };
+      (cp[i] as any)[field] = value;
       return cp;
     });
   };
 
-  const deleteWord = (i: number) =>
-    setWordsInput((prev) => prev.filter((_, idx) => idx !== i));
+  const deleteWord = (i: number) => setWordsInput((prev) => prev.filter((_, idx) => idx !== i));
 
   const handleSubmit = async () => {
     try {
@@ -404,23 +422,14 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       const payload = {
         title: "Crossword Puzzle",
         description: "Solve the crossword based on the given clues.",
-        surahId: "66607aa1d7639ce76b12ff08",
-        typeId: "68e5ff0422e84795f82789c4",
+        typeId: 4,
         crosswordPuzzleMatrix: grid,
-        references: placedList.map((p) => ({
-          word: p.word.toUpperCase(),
-          referenceHeading: p.heading,
-          referenceDesc: p.desc,
-        })),
       };
-      const res = await fetch(
-        "http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
+      const res = await fetch("http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) throw new Error("Failed to save crossword");
       setStatus("success");
     } catch {
@@ -432,14 +441,12 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-6 text-white">
-      <h2 className="text-3xl font-bold text-center mb-6">
-        🧩 Crossword Puzzle Generator
-      </h2>
+      <h2 className="text-3xl font-bold text-center mb-6">🧩 Crossword Puzzle Generator</h2>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* LEFT: Grid + cards */}
         <div className="flex flex-col items-center">
-          {/* Fixed-size Grid (8×8 / 10×10 / 15×15) with visible boxes */}
+          {/* Fixed-size Grid */}
           <div
             className="grid bg-purple-800 p-3 rounded-xl shadow-lg mb-4"
             style={{
@@ -451,12 +458,10 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
             {Array.from({ length: size }).map((_, r) =>
               Array.from({ length: size }).map((_, c) => {
                 const cell = grid[r]?.[c];
-
-                // Empty cells are still visible as white squares with borders
                 if (!cell || !cell.isLetter) {
+                  // transparent blanks
                   return <div key={`${r}-${c}-empty`} className="w-10 h-10" />;
                 }
-
                 return (
                   <div
                     key={`${r}-${c}`}
@@ -468,7 +473,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                       </span>
                     )}
                     <span className="text-xl select-none">
-                      {showAnswers || cell.prefill ? cell.ch.toUpperCase() : ""}
+                      {(showAnswers || cell.prefill) ? cell.ch.toUpperCase() : ""}
                     </span>
                   </div>
                 );
@@ -485,9 +490,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
             </button>
 
             <div className="flex items-center gap-2">
-              <label htmlFor="size" className="text-sm">
-                Grid Size:
-              </label>
+              <label htmlFor="size" className="text-sm">Grid Size:</label>
               <select
                 id="size"
                 value={size}
@@ -501,7 +504,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
             </div>
           </div>
 
-          {/* Slider of placed words */}
+          {/* Slider of placed words (now shows real numbers) */}
           <div className="relative w-full max-w-lg overflow-hidden mt-2">
             <button
               onClick={() => scrollSlider("left")}
@@ -513,24 +516,19 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
               ref={sliderRef}
               className="flex overflow-x-auto gap-3 scroll-smooth px-10 py-3 scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-900"
             >
-              {wordsInput.map((p, i) => (
-                <div
-                  key={i}
-                  className="flex-shrink-0 w-64 bg-gradient-to-b from-purple-600 to-purple-800 rounded-2xl shadow-md text-white p-4"
-                >
-                  <div className="flex align-items-center gap-3 mb-1">
-                    <h3 className="text-lg font-semibold mb-0">
-                      {p.word.toUpperCase()}
+              {placedList.map((p, i) => {
+                const nums = wordNumberMap.get(p.word.toUpperCase()) ?? [];
+                const label = nums.length ? `#${Math.min(...nums)} — ` : "";
+                return (
+                  <div key={i} className="flex-shrink-0 w-64 bg-gradient-to-b from-purple-600 to-purple-800 rounded-2xl shadow-md text-white p-4">
+                    <h3 className="text-lg font-semibold mb-1">
+                      {label}{p.word.toUpperCase()}
                     </h3>
+                    <p className="text-sm text-purple-200 font-semibold">{p.heading}</p>
+                    <p className="text-sm text-purple-300 mt-1">{p.desc}</p>
                   </div>
-                  <p className="text-sm text-purple-200 font-semibold">
-                    {p.referenceHeading}
-                  </p>
-                  <p className="text-sm text-purple-300 mt-1">
-                    {p.referenceDesc}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <button
               onClick={() => scrollSlider("right")}
@@ -543,12 +541,14 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
 
         {/* RIGHT: Words / Clues / Submit */}
         <div className="bg-purple-800 rounded-xl p-5 shadow-md">
-          <h3 className="text-lg font-semibold mb-4">Manage Words & Clues</h3>
-          <div className="space-y-2 mb-5">
+          <h3 className="text-lg font-semibold mb-3">Manage Words & Clues</h3>
+
+          {/* Add new */}
+          <div className="space-y-2 mb-2">
             <input
               type="text"
               value={newWord}
-              onChange={(e) => setNewWord(e.target.value)}
+              onChange={(e) => { setNewWord(e.target.value); setErrorMsg(""); }}
               placeholder="Enter WORD"
               className="w-full bg-purple-700 px-3 py-2 rounded-lg"
             />
@@ -566,51 +566,46 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
               placeholder="Reference description"
               className="w-full bg-purple-700 px-3 py-2 rounded-lg"
             />
-            <button
-              onClick={addWord}
-              className="w-full bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-semibold"
-            >
+            {errorMsg && (
+              <div className="text-red-300 text-sm">{errorMsg}</div>
+            )}
+            <button onClick={addWord} className="w-full bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-semibold">
               ➕ Add Word
             </button>
           </div>
 
+          {/* Existing list (show actual numbers if placed) */}
           <div className="space-y-3 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-900 pr-2">
-            {wordsInput.map((item, index) => (
-              <div
-                key={index}
-                className="bg-purple-700 p-3 rounded-lg flex flex-col gap-2"
-              >
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold">
-                    #{index + 1}: {item.word.toUpperCase()}
-                  </span>
-                  <button
-                    onClick={() => deleteWord(index)}
-                    className="bg-red-500 hover:bg-red-400 text-white px-2 py-1 rounded"
-                  >
-                    🗑
-                  </button>
+            {wordsInput.map((item, index) => {
+              const nums = wordNumberMap.get(item.word.toUpperCase()) ?? [];
+              const badge = nums.length ? `#${Math.min(...nums)}` : "—";
+              return (
+                <div key={index} className="bg-purple-700 p-3 rounded-lg flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold">
+                      {badge} : {item.word.toUpperCase()}
+                    </span>
+                    <button onClick={() => deleteWord(index)} className="bg-red-500 hover:bg-red-400 text-white px-2 py-1 rounded">
+                      🗑
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={item.referenceHeading}
+                    onChange={(e) => updateWordField(index, "referenceHeading", e.target.value)}
+                    placeholder="Heading"
+                    className="bg-purple-600 px-2 py-1 rounded"
+                  />
+                  <input
+                    type="text"
+                    value={item.referenceDesc}
+                    onChange={(e) => updateWordField(index, "referenceDesc", e.target.value)}
+                    placeholder="Description"
+                    className="bg-purple-600 px-2 py-1 rounded"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={item.referenceHeading}
-                  onChange={(e) =>
-                    updateWordField(index, "referenceHeading", e.target.value)
-                  }
-                  placeholder="Heading"
-                  className="bg-purple-600 px-2 py-1 rounded"
-                />
-                <input
-                  type="text"
-                  value={item.referenceDesc}
-                  onChange={(e) =>
-                    updateWordField(index, "referenceDesc", e.target.value)
-                  }
-                  placeholder="Description"
-                  className="bg-purple-600 px-2 py-1 rounded"
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Clues */}
@@ -621,8 +616,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                 {across.map((a) => (
                   <li key={`A${a.number}`}>
                     <span className="font-bold">{a.number}. </span>
-                    <span className="italic">{a.heading}</span> — {a.desc} (
-                    {a.len})
+                    <span className="italic">{a.heading}</span> — {a.desc} ({a.len})
                   </li>
                 ))}
               </ul>
@@ -633,8 +627,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                 {down.map((d) => (
                   <li key={`D${d.number}`}>
                     <span className="font-bold">{d.number}. </span>
-                    <span className="italic">{d.heading}</span> — {d.desc} (
-                    {d.len})
+                    <span className="italic">{d.heading}</span> — {d.desc} ({d.len})
                   </li>
                 ))}
               </ul>
@@ -648,12 +641,8 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
           >
             {status === "submitting" ? "Saving..." : "💾 Submit Crossword"}
           </button>
-          {status === "success" && (
-            <p className="mt-2 text-green-300 text-sm">Saved!</p>
-          )}
-          {status === "error" && (
-            <p className="mt-2 text-red-300 text-sm">Couldn’t save.</p>
-          )}
+          {status === "success" && <p className="mt-2 text-green-300 text-sm">Saved!</p>}
+          {status === "error" && <p className="mt-2 text-red-300 text-sm">Couldn’t save.</p>}
         </div>
       </div>
     </div>
