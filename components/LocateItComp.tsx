@@ -17,10 +17,19 @@ export default function LocateItUploader() {
   const imgRef = useRef<HTMLImageElement | null>(null);
 
   const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null);
-  const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(
+    null
+  );
+  const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({
+    w: 0,
+    h: 0,
+  });
   const [points, setPoints] = useState<Point[]>([]);
-  const [hoverCell, setHoverCell] = useState<{ row: number; col: number } | null>(null);
+  console.log("points", points);
+  const [hoverCell, setHoverCell] = useState<{
+    row: number;
+    col: number;
+  } | null>(null);
   const [pendingLabel, setPendingLabel] = useState<string>("");
 
   // Keep container size responsive
@@ -51,7 +60,10 @@ export default function LocateItUploader() {
 
   const imgOnLoad = () => {
     if (!imgRef.current) return;
-    setImgNatural({ w: imgRef.current.naturalWidth, h: imgRef.current.naturalHeight });
+    setImgNatural({
+      w: imgRef.current.naturalWidth,
+      h: imgRef.current.naturalHeight,
+    });
     // ensure container size recalculates
     if (wrapRef.current) {
       const rect = wrapRef.current.getBoundingClientRect();
@@ -88,7 +100,12 @@ export default function LocateItUploader() {
     const offsetY = (rect.height - drawH) / 2;
 
     // If clicked outside the drawn image, ignore
-    if (x < offsetX || x > offsetX + drawW || y < offsetY || y > offsetY + drawH) {
+    if (
+      x < offsetX ||
+      x > offsetX + drawW ||
+      y < offsetY ||
+      y > offsetY + drawH
+    ) {
       return null;
     }
 
@@ -108,7 +125,15 @@ export default function LocateItUploader() {
         next.splice(idx, 1);
         return next;
       }
-      return [...prev, { id: `${row}-${col}`, row, col, label: label?.trim() ? label : undefined }];
+      return [
+        ...prev,
+        {
+          id: `${row}-${col}`,
+          row,
+          col,
+          label: label?.trim() ? label : undefined,
+        },
+      ];
     });
   };
 
@@ -132,7 +157,9 @@ export default function LocateItUploader() {
   };
 
   const exportPoints = () => {
-    const blob = new Blob([JSON.stringify(points, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(points, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -145,12 +172,16 @@ export default function LocateItUploader() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center gap-6 p-4">
-      <h1 className="text-3xl font-bold">Locate It — 12×12 Grid on Uploaded Image</h1>
+      <h1 className="text-3xl font-bold">
+        Locate It — 12×12 Grid on Uploaded Image
+      </h1>
 
       {/* Controls */}
       <div className="w-full max-w-[900px] flex flex-col md:flex-row gap-3 items-stretch md:items-end">
         <div className="flex-1">
-          <label className="block text-sm font-semibold mb-1">Upload image</label>
+          <label className="block text-sm font-semibold mb-1">
+            Upload image
+          </label>
           <input
             type="file"
             accept="image/*"
@@ -159,7 +190,9 @@ export default function LocateItUploader() {
           />
         </div>
         <div className="flex-1">
-          <label className="block text-sm font-semibold mb-1">Point label (optional)</label>
+          <label className="block text-sm font-semibold mb-1">
+            Point label (optional)
+          </label>
           <input
             value={pendingLabel}
             onChange={(e) => setPendingLabel(e.target.value)}
@@ -307,9 +340,14 @@ export default function LocateItUploader() {
 
       {/* Points list */}
       <div className="w-full max-w-[900px]">
-        <h2 className="text-lg font-semibold mb-2">Selected Points ({points.length})</h2>
+        <h2 className="text-lg font-semibold mb-2">
+          Selected Points ({points.length})
+        </h2>
         {points.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Click on the grid to add points. Click again on the same cell to remove.</p>
+          <p className="text-sm text-muted-foreground">
+            Click on the grid to add points. Click again on the same cell to
+            remove.
+          </p>
         ) : (
           <div className="overflow-x-auto border rounded-lg">
             <table className="w-full text-sm">
@@ -327,7 +365,10 @@ export default function LocateItUploader() {
                   .slice()
                   .sort((a, b) => a.row - b.row || a.col - b.col)
                   .map((p, i) => (
-                    <tr key={`row-${p.id}`} className="odd:bg-white even:bg-neutral-50/40">
+                    <tr
+                      key={`row-${p.id}`}
+                      className="odd:bg-white even:bg-neutral-50/40"
+                    >
                       <td className="p-2 border-b">{i + 1}</td>
                       <td className="p-2 border-b">{p.row + 1}</td>
                       <td className="p-2 border-b">{p.col + 1}</td>
@@ -337,7 +378,11 @@ export default function LocateItUploader() {
                           value={p.label ?? ""}
                           onChange={(e) =>
                             setPoints((prev) =>
-                              prev.map((q) => (q.id === p.id ? { ...q, label: e.target.value } : q))
+                              prev.map((q) =>
+                                q.id === p.id
+                                  ? { ...q, label: e.target.value }
+                                  : q
+                              )
                             )
                           }
                           placeholder="(optional)"
@@ -347,7 +392,11 @@ export default function LocateItUploader() {
                         <button
                           className="px-2 py-1 text-red-600 border rounded"
                           onClick={() =>
-                            setPoints((prev) => prev.filter((q) => !(q.row === p.row && q.col === p.col)))
+                            setPoints((prev) =>
+                              prev.filter(
+                                (q) => !(q.row === p.row && q.col === p.col)
+                              )
+                            )
                           }
                         >
                           Remove
@@ -362,7 +411,8 @@ export default function LocateItUploader() {
       </div>
 
       <div className="text-xs text-neutral-500 mt-2">
-        Tip: Click a grid cell to add/remove a point. Use the “Point label” field before clicking to attach a label.
+        Tip: Click a grid cell to add/remove a point. Use the “Point label”
+        field before clicking to attach a label.
       </div>
     </div>
   );

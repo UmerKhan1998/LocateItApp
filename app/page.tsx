@@ -1,21 +1,19 @@
 "use client";
 
-import dynamic from 'next/dynamic';
+import dynamic from "next/dynamic";
 
-import LocateItComp from '@/components/LocateItComp'
-const CrosswordPuzzle = dynamic(
-  () => import('@/components/CrosswordPuzzle'),
-  { ssr: false }
-);
-
+import LocateItComp from "@/components/LocateItComp";
+const CrosswordPuzzle = dynamic(() => import("@/components/CrosswordPuzzle"), {
+  ssr: false,
+});
 
 const page = () => {
   return (
     <div>
-      {/* <LocateItComp /> */}
-      <CrosswordPuzzle />
+      <LocateItComp />
+      {/* <CrosswordPuzzle /> */}
     </div>
-  )
-}
+  );
+};
 
-export default page
+export default page;
