@@ -159,7 +159,7 @@ function generateGrid(
     placed.push(first);
   }
 
-  // Try others
+  // Try others (simple placement)
   for (let i = 1; i < items.length; i++) {
     const w = items[i];
     let placedFlag = false;
@@ -196,6 +196,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   const [size, setSize] = useState(defaultSize);
   const [wordsInput, setWordsInput] = useState<WordData[]>(defaultWords);
   const [showAnswers, setShowAnswers] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
   const { grid, across, down } = useMemo(() => {
@@ -213,6 +214,15 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   const addWord = () => {
     const w = newWord.trim().toLowerCase();
     if (!w) return;
+    // check connectivity: must share at least one letter with existing words
+    const connected = wordsInput.length === 0 || wordsInput.some(wordObj =>
+      wordObj.word.toLowerCase().split("").some(ch => w.includes(ch))
+    );
+    if (!connected) {
+      setErrorMsg("❌ Word must connect with existing crossword!");
+      setTimeout(() => setErrorMsg(""), 3000);
+      return;
+    }
     setWordsInput(prev => [...prev, {
       word: w.toUpperCase(),
       referenceHeading: newHeading || "Clue",
@@ -221,15 +231,12 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     setNewWord(""); setNewHeading(""); setNewDesc("");
   };
 
-  /** ---------- Updated handleSubmit ---------- */
   const handleSubmit = async () => {
     try {
       setStatus("submitting");
-
-      // Transform grid to required format
       const formattedGrid = grid.map(row =>
         row.map(cell => {
-          if (!cell || !cell.isLetter) {
+          if (!cell.isLetter) {
             return {
               isPattern: false,
               aplhabet: "",
@@ -238,14 +245,11 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
               referenceDesc: "",
             };
           }
-
           let refNo: number | null = cell.startNo;
           let heading = "";
           let desc = "";
           if (refNo) {
-            const clue =
-              across.find(a => a.number === refNo) ||
-              down.find(d => d.number === refNo);
+            const clue = across.find(a => a.number === refNo) || down.find(d => d.number === refNo);
             if (clue) {
               heading = clue.heading;
               desc = clue.desc;
@@ -260,34 +264,24 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
           };
         })
       );
-
       const payload = {
         title: "Crossword Puzzle",
-        description: "Solve the crossword based on the given clues.",
-        typeId: 4,
+        description: "Solve the crossword.",
         crosswordPuzzleMatrix: formattedGrid,
       };
-
       console.log("Submitting payload:", payload);
-
-      const res = await fetch("http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error("Failed to save crossword");
       setStatus("success");
     } catch {
       setStatus("error");
     } finally {
-      setTimeout(() => setStatus("idle"), 2500);
+      setTimeout(() => setStatus("idle"), 2000);
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-6 text-white">
       <h2 className="text-3xl font-bold text-center mb-6">🧩 Crossword Puzzle Generator</h2>
+      {errorMsg && <p className="text-red-400 text-center mb-2">{errorMsg}</p>}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto">
         {/* LEFT: Grid */}
         <div className="flex flex-col items-center">
