@@ -6,8 +6,6 @@ type CrosswordCell = {
   isLetter: boolean;
   ch: string;
   startNo: number | null;
-  acrossId?: number | null;
-  downId?: number | null;
   prefill?: boolean;
 };
 
@@ -29,8 +27,6 @@ const newCell = (): CrosswordCell => ({
   isLetter: false,
   ch: "",
   startNo: null,
-  acrossId: null,
-  downId: null,
   prefill: false,
 });
 
@@ -39,7 +35,6 @@ const directions = {
   DOWN: { dr: 1, dc: 0 },
 } as const;
 
-/** Placement rules */
 function canPlace(
   grid: CrosswordCell[][],
   r: number,
@@ -50,41 +45,15 @@ function canPlace(
   const { dr, dc } = directions[dir];
   const H = grid.length;
   const W = grid[0].length;
-
   const endR = r + dr * (word.length - 1);
   const endC = c + dc * (word.length - 1);
   if (endR < 0 || endR >= H || endC < 0 || endC >= W) return false;
-
-  const prevR = r - dr;
-  const prevC = c - dc;
-  if (prevR >= 0 && prevR < H && prevC >= 0 && prevC < W) {
-    if (grid[prevR][prevC].isLetter) return false;
-  }
-  const nextR = endR + dr;
-  const nextC = endC + dc;
-  if (nextR >= 0 && nextR < H && nextC >= 0 && nextC < W) {
-    if (grid[nextR][nextC].isLetter) return false;
-  }
 
   for (let i = 0; i < word.length; i++) {
     const rr = r + dr * i;
     const cc = c + dc * i;
     const cell = grid[rr][cc];
     if (cell.isLetter && cell.ch !== word[i]) return false;
-
-    if (!cell.isLetter) {
-      if (dir === "ACROSS") {
-        const up = rr - 1;
-        const dn = rr + 1;
-        if (up >= 0 && grid[up][cc].isLetter) return false;
-        if (dn < H && grid[dn][cc].isLetter) return false;
-      } else {
-        const lf = cc - 1;
-        const rt = cc + 1;
-        if (lf >= 0 && grid[rr][lf].isLetter) return false;
-        if (rt < W && grid[rr][rt].isLetter) return false;
-      }
-    }
   }
   return true;
 }
@@ -106,7 +75,6 @@ function placeWord(
   }
 }
 
-/** Numbering + clues */
 function buildNumbersAndClues(
   grid: CrosswordCell[][],
   placedSeq: { word: string; heading: string; desc: string }[]
@@ -114,32 +82,8 @@ function buildNumbersAndClues(
   const H = grid.length;
   const W = grid[0].length;
   let number = 1;
-
-  type Clue = {
-    number: number;
-    word: string;
-    heading: string;
-    desc: string;
-    row: number;
-    col: number;
-    len: number;
-  };
-
-  const across: Clue[] = [];
-  const down: Clue[] = [];
-
-  const pull = (r: number, c: number, dir: "ACROSS" | "DOWN") => {
-    const { dr, dc } = directions[dir];
-    let rr = r;
-    let cc = c;
-    let s = "";
-    while (rr >= 0 && rr < H && cc >= 0 && cc < W && grid[rr][cc].isLetter) {
-      s += grid[rr][cc].ch;
-      rr += dr;
-      cc += dc;
-    }
-    return s;
-  };
+  const across: any[] = [];
+  const down: any[] = [];
 
   const metaLeft = placedSeq.slice();
   const takeMeta = (w: string) => {
@@ -160,132 +104,85 @@ function buildNumbersAndClues(
       if (startAcross || startDown) {
         grid[r][c].startNo = number;
         if (startAcross) {
-          const w = pull(r, c, "ACROSS");
-          const meta = takeMeta(w);
-          across.push({ number, word: w, heading: meta.heading, desc: meta.desc, row: r, col: c, len: w.length });
+          const w = [];
+          let cc = c;
+          while (cc < W && grid[r][cc].isLetter) {
+            w.push(grid[r][cc].ch);
+            cc++;
+          }
+          const wordStr = w.join("");
+          const meta = takeMeta(wordStr);
+          across.push({ number, word: wordStr, heading: meta.heading, desc: meta.desc, row: r, col: c, len: wordStr.length });
         }
         if (startDown) {
-          const w = pull(r, c, "DOWN");
-          const meta = takeMeta(w);
-          down.push({ number, word: w, heading: meta.heading, desc: meta.desc, row: r, col: c, len: w.length });
+          const w = [];
+          let rr = r;
+          while (rr < H && grid[rr][c].isLetter) {
+            w.push(grid[rr][c].ch);
+            rr++;
+          }
+          const wordStr = w.join("");
+          const meta = takeMeta(wordStr);
+          down.push({ number, word: wordStr, heading: meta.heading, desc: meta.desc, row: r, col: c, len: wordStr.length });
         }
         number++;
       }
     }
   }
-
   return { across, down };
 }
 
-/** Generator (intersections, alternating dir) */
 function generateGrid(
   size: number,
   words: WordData[]
-): { grid: CrosswordCell[][]; placedMeta: { word: string; heading: string; desc: string }[] } {
-  const items = words
-    .map((w) => ({
-      word: w.word.trim().toLowerCase(),
-      heading: w.referenceHeading,
-      desc: w.referenceDesc,
-    }))
-    .filter((w) => w.word.length > 1);
-  items.sort((a, b) => b.word.length - a.word.length);
+): {
+  grid: CrosswordCell[][];
+  placedMeta: { word: string; heading: string; desc: string }[];
+} {
+  const items = words.map((w) => ({
+    word: w.word.trim().toLowerCase(),
+    heading: w.referenceHeading,
+    desc: w.referenceDesc,
+  }));
 
-  const attempts = 12;
-  let best = { grid: [] as CrosswordCell[][], placedMeta: [] as any[] };
+  const grid = range(size).map(() => range(size).map(newCell));
+  const placed: typeof items = [];
 
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const grid = range(size).map(() => range(size).map(newCell));
-    const placed: typeof items = [];
+  if (items.length === 0) return { grid, placedMeta: [] };
 
-    if (!items.length) return { grid, placedMeta: [] };
+  // Place first word across
+  const first = items[0];
+  const r = Math.floor(size / 2);
+  const c = Math.max(0, Math.floor((size - first.word.length) / 2));
+  if (canPlace(grid, r, c, first.word, "ACROSS")) {
+    placeWord(grid, r, c, first.word, "ACROSS");
+    placed.push(first);
+  }
 
-    // place first (longest) horizontally near center
-    {
-      const first = items[0];
-      const r = Math.floor(size / 2);
-      const c = Math.max(0, Math.floor((size - first.word.length) / 2));
-      let ok = false;
-      if (canPlace(grid, r, c, first.word, "ACROSS")) {
-        placeWord(grid, r, c, first.word, "ACROSS");
-        placed.push(first);
-        ok = true;
-      } else {
-        outer: for (let rr = 0; rr < size; rr++) {
-          for (let cc = 0; cc < size; cc++) {
-            if (canPlace(grid, rr, cc, first.word, "ACROSS")) {
-              placeWord(grid, rr, cc, first.word, "ACROSS");
-              placed.push(first);
-              ok = true;
-              break outer;
-            }
+  // Try others (simple placement)
+  for (let i = 1; i < items.length; i++) {
+    const w = items[i];
+    let placedFlag = false;
+    for (let rr = 0; rr < size && !placedFlag; rr++) {
+      for (let cc = 0; cc < size && !placedFlag; cc++) {
+        if (!grid[rr][cc].isLetter) continue;
+        for (let k = 0; k < w.word.length; k++) {
+          if (w.word[k] !== grid[rr][cc].ch) continue;
+          if (canPlace(grid, rr - k, cc, w.word, "DOWN")) {
+            placeWord(grid, rr - k, cc, w.word, "DOWN");
+            placed.push(w);
+            placedFlag = true;
+          } else if (canPlace(grid, rr, cc - k, w.word, "ACROSS")) {
+            placeWord(grid, rr, cc - k, w.word, "ACROSS");
+            placed.push(w);
+            placedFlag = true;
           }
         }
       }
-      if (!ok) continue;
-    }
-
-    let dir: "ACROSS" | "DOWN" = "DOWN";
-    for (let i = 1; i < items.length; i++) {
-      const { word } = items[i];
-
-      const candidates: { r: number; c: number; dir: "ACROSS" | "DOWN" }[] = [];
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          const cell = grid[r][c];
-          if (!cell.isLetter) continue;
-          for (let k = 0; k < word.length; k++) {
-            if (word[k] !== cell.ch) continue;
-
-            if (dir === "ACROSS") {
-              const startC = c - k;
-              if (canPlace(grid, r, startC, word, "ACROSS"))
-                candidates.push({ r, c: startC, dir: "ACROSS" });
-            } else {
-              const startR = r - k;
-              if (canPlace(grid, startR, c, word, "DOWN"))
-                candidates.push({ r: startR, c, dir: "DOWN" });
-            }
-          }
-        }
-      }
-
-      if (candidates.length === 0) {
-        const alt: "ACROSS" | "DOWN" = dir === "ACROSS" ? "DOWN" : "ACROSS";
-        for (let r = 0; r < size; r++) {
-          for (let c = 0; c < size; c++) {
-            const cell = grid[r][c];
-            if (!cell.isLetter) continue;
-            for (let k = 0; k < word.length; k++) {
-              if (word[k] !== cell.ch) continue;
-              if (alt === "ACROSS") {
-                const startC = c - k;
-                if (canPlace(grid, r, startC, word, "ACROSS"))
-                  candidates.push({ r, c: startC, dir: "ACROSS" });
-              } else {
-                const startR = r - k;
-                if (canPlace(grid, startR, c, word, "DOWN"))
-                  candidates.push({ r: startR, c, dir: "DOWN" });
-              }
-            }
-          }
-        }
-      }
-
-      if (candidates.length > 0) {
-        const pick = candidates[Math.floor(Math.random() * candidates.length)];
-        placeWord(grid, pick.r, pick.c, word, pick.dir);
-        placed.push(items[i]);
-        dir = dir === "ACROSS" ? "DOWN" : "ACROSS";
-      }
-    }
-
-    if (!best.grid.length || placed.length > best.placedMeta.length) {
-      best = { grid, placedMeta: placed };
     }
   }
 
-  return best;
+  return { grid, placedMeta: placed };
 }
 
 /** ---------- Component ---------- */
@@ -293,356 +190,161 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   defaultWords = [
     { word: "HEAT", referenceHeading: "Temperature", referenceDesc: "Form of energy that causes things to become warm" },
     { word: "APPLE", referenceHeading: "Fruit", referenceDesc: "A round fruit that keeps doctors away" },
-    { word: "RABBIT", referenceHeading: "Animal", referenceDesc: "A small mammal with long ears and a love for carrots" },
-    { word: "BIRD", referenceHeading: "Creature", referenceDesc: "A feathered animal that can usually fly" },
-    { word: "MINT", referenceHeading: "Herb", referenceDesc: "A fragrant plant often used for flavoring or freshness" },
-    { word: "TOPIC", referenceHeading: "Subject", referenceDesc: "The main idea or theme of a discussion" },
-    { word: "TREE", referenceHeading: "Plant", referenceDesc: "A tall plant with a trunk, branches, and leaves" },
   ],
   defaultSize = 10,
 }) => {
-  const [size, setSize] = useState<number>(defaultSize);
+  const [size, setSize] = useState(defaultSize);
   const [wordsInput, setWordsInput] = useState<WordData[]>(defaultWords);
   const [showAnswers, setShowAnswers] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // UI inputs
+  const { grid, across, down } = useMemo(() => {
+    const { grid, placedMeta } = generateGrid(size, wordsInput);
+    const { across, down } = buildNumbersAndClues(grid, placedMeta);
+    for (const a of across) grid[a.row][a.col].prefill = true;
+    for (const d of down) grid[d.row][d.col].prefill = true;
+    return { grid, across, down };
+  }, [size, wordsInput]);
+
   const [newWord, setNewWord] = useState("");
   const [newHeading, setNewHeading] = useState("");
   const [newDesc, setNewDesc] = useState("");
 
-  // generate on inputs/size
-  const { grid, across, down, placedList, wordNumberMap } = useMemo(() => {
-    const { grid: fullGrid, placedMeta } = generateGrid(size, wordsInput);
-    const { across, down } = buildNumbersAndClues(fullGrid, placedMeta);
-
-    // prefill first letters
-    for (const a of across) fullGrid[a.row][a.col].prefill = true;
-    for (const d of down) fullGrid[d.row][d.col].prefill = true;
-
-    // map: word -> list of numbers it owns in grid
-    const map = new Map<string, number[]>();
-    for (const a of across) {
-      const k = a.word.toUpperCase();
-      map.set(k, [...(map.get(k) ?? []), a.number]);
-    }
-    for (const d of down) {
-      const k = d.word.toUpperCase();
-      map.set(k, [...(map.get(k) ?? []), d.number]);
-    }
-
-    return {
-      grid: fullGrid,
-      across,
-      down,
-      placedList: placedMeta,
-      wordNumberMap: map,
-    };
-  }, [size, wordsInput]);
-
-  const sliderRef = useRef<HTMLDivElement | null>(null);
-  const scrollSlider = (dir: "left" | "right") => {
-    if (!sliderRef.current) return;
-    sliderRef.current.scrollBy({ left: dir === "left" ? -240 : 240, behavior: "smooth" });
-  };
-
-  /** Check if a new word can connect to current grid */
-  const canConnectToGrid = (wordUpper: string) => {
-    const word = wordUpper.toLowerCase();
-    // If grid is empty (no letters), allow as seed
-    let hasAny = false;
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        if (grid[r]?.[c]?.isLetter) {
-          hasAny = true;
-          break;
-        }
-      }
-      if (hasAny) break;
-    }
-    if (!hasAny) return true;
-
-    // Try any intersecting placement
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        const cell = grid[r]?.[c];
-        if (!cell?.isLetter) continue;
-
-        for (let k = 0; k < word.length; k++) {
-          if (word[k] !== cell.ch) continue;
-
-          const startC = c - k;
-          const startR = r - k;
-          if (canPlace(grid, r, startC, word, "ACROSS")) return true;
-          if (canPlace(grid, startR, c, word, "DOWN")) return true;
-        }
-      }
-    }
-    return false;
-  };
-
   const addWord = () => {
-    setErrorMsg("");
-    const w = newWord.trim().toUpperCase();
+    const w = newWord.trim().toLowerCase();
     if (!w) return;
-
-    // connectivity validation against current grid
-    if (!canConnectToGrid(w)) {
-      setErrorMsg(`“${w}” can’t connect to the existing crossword. Try another word or size.`);
-      return; // DO NOT add
+    // check connectivity: must share at least one letter with existing words
+    const connected = wordsInput.length === 0 || wordsInput.some(wordObj =>
+      wordObj.word.toLowerCase().split("").some(ch => w.includes(ch))
+    );
+    if (!connected) {
+      setErrorMsg("❌ Word must connect with existing crossword!");
+      setTimeout(() => setErrorMsg(""), 3000);
+      return;
     }
-
-    setWordsInput((p) => [
-      ...p,
-      {
-        word: w,
-        referenceHeading: newHeading.trim() || "Clue",
-        referenceDesc: newDesc.trim() || "—",
-      },
-    ]);
-    setNewWord("");
-    setNewHeading("");
-    setNewDesc("");
+    setWordsInput(prev => [...prev, {
+      word: w.toUpperCase(),
+      referenceHeading: newHeading || "Clue",
+      referenceDesc: newDesc || "—",
+    }]);
+    setNewWord(""); setNewHeading(""); setNewDesc("");
   };
-
-  const updateWordField = (i: number, field: keyof WordData, value: string) => {
-    setWordsInput((prev) => {
-      const cp = [...prev];
-      (cp[i] as any)[field] = value;
-      return cp;
-    });
-  };
-
-  const deleteWord = (i: number) => setWordsInput((prev) => prev.filter((_, idx) => idx !== i));
 
   const handleSubmit = async () => {
     try {
       setStatus("submitting");
+      const formattedGrid = grid.map(row =>
+        row.map(cell => {
+          if (!cell.isLetter) {
+            return {
+              isPattern: false,
+              aplhabet: "",
+              referenceNo: null,
+              referenceHeading: "",
+              referenceDesc: "",
+            };
+          }
+          let refNo: number | null = cell.startNo;
+          let heading = "";
+          let desc = "";
+          if (refNo) {
+            const clue = across.find(a => a.number === refNo) || down.find(d => d.number === refNo);
+            if (clue) {
+              heading = clue.heading;
+              desc = clue.desc;
+            }
+          }
+          return {
+            isPattern: true,
+            aplhabet: cell.ch.toUpperCase(),
+            referenceNo: refNo,
+            referenceHeading: heading,
+            referenceDesc: desc,
+          };
+        })
+      );
       const payload = {
         title: "Crossword Puzzle",
-        description: "Solve the crossword based on the given clues.",
-        typeId: 4,
-        crosswordPuzzleMatrix: grid,
+        description: "Solve the crossword.",
+        crosswordPuzzleMatrix: formattedGrid,
       };
-      const res = await fetch("http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Failed to save crossword");
+      console.log("Submitting payload:", payload);
       setStatus("success");
     } catch {
       setStatus("error");
     } finally {
-      setTimeout(() => setStatus("idle"), 2500);
+      setTimeout(() => setStatus("idle"), 2000);
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-6 text-white">
       <h2 className="text-3xl font-bold text-center mb-6">🧩 Crossword Puzzle Generator</h2>
-
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* LEFT: Grid + cards */}
+      {errorMsg && <p className="text-red-400 text-center mb-2">{errorMsg}</p>}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto">
+        {/* LEFT: Grid */}
         <div className="flex flex-col items-center">
-          {/* Fixed-size Grid */}
           <div
             className="grid bg-purple-800 p-3 rounded-xl shadow-lg mb-4"
             style={{
-              gridTemplateColumns: `repeat(${size}, 2.6rem)`,
-              gridTemplateRows: `repeat(${size}, 2.6rem)`,
+              gridTemplateColumns: `repeat(${size}, 2.5rem)`,
+              gridTemplateRows: `repeat(${size}, 2.5rem)`,
               gap: "2px",
             }}
           >
             {Array.from({ length: size }).map((_, r) =>
               Array.from({ length: size }).map((_, c) => {
-                const cell = grid[r]?.[c];
-                if (!cell || !cell.isLetter) {
-                  // transparent blanks
-                  return <div key={`${r}-${c}-empty`} className="w-10 h-10" />;
+                const cell = grid[r][c];
+                if (!cell.isLetter) {
+                  return <div key={`${r}-${c}`} className="w-10 h-10" />;
                 }
                 return (
-                  <div
-                    key={`${r}-${c}`}
-                    className="relative flex items-center justify-center bg-white text-black border border-black rounded-sm font-bold"
-                  >
+                  <div key={`${r}-${c}`} className="relative flex items-center justify-center bg-white text-black border border-black font-bold">
                     {cell.startNo && (
-                      <span className="absolute text-[0.62rem] top-[2px] left-[3px] text-gray-700">
+                      <span className="absolute text-[0.6rem] top-[2px] left-[3px] text-gray-700">
                         {cell.startNo}
                       </span>
                     )}
-                    <span className="text-xl select-none">
-                      {(showAnswers || cell.prefill) ? cell.ch.toUpperCase() : ""}
-                    </span>
+                    <span>{(showAnswers || cell.prefill) ? cell.ch.toUpperCase() : ""}</span>
                   </div>
                 );
               })
             )}
           </div>
-
-          <div className="flex items-center gap-3 mb-2">
-            <button
-              onClick={() => setShowAnswers((s) => !s)}
-              className="bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded-lg font-semibold"
-            >
+          <div className="flex gap-3 mb-3">
+            <button onClick={() => setShowAnswers(s => !s)} className="bg-purple-600 px-3 py-1 rounded">
               {showAnswers ? "Hide Answers" : "Show Answers"}
             </button>
-
-            <div className="flex items-center gap-2">
-              <label htmlFor="size" className="text-sm">Grid Size:</label>
-              <select
-                id="size"
-                value={size}
-                onChange={(e) => setSize(Number(e.target.value))}
-                className="bg-purple-700 border border-purple-400 text-white rounded-lg px-2 py-1"
-              >
-                <option value={8}>8 × 8</option>
-                <option value={10}>10 × 10</option>
-                <option value={15}>15 × 15</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Slider of placed words (now shows real numbers) */}
-          <div className="relative w-full max-w-lg overflow-hidden mt-2">
-            <button
-              onClick={() => scrollSlider("left")}
-              className="absolute left-0 top-1/2 -translate-y-1/2 bg-purple-600 hover:bg-purple-500 text-white rounded-full w-8 h-8 flex items-center justify-center z-10 shadow-md"
-            >
-              ‹
-            </button>
-            <div
-              ref={sliderRef}
-              className="flex overflow-x-auto gap-3 scroll-smooth px-10 py-3 scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-900"
-            >
-              {placedList.map((p, i) => {
-                const nums = wordNumberMap.get(p.word.toUpperCase()) ?? [];
-                const label = nums.length ? `#${Math.min(...nums)} — ` : "";
-                return (
-                  <div key={i} className="flex-shrink-0 w-64 bg-gradient-to-b from-purple-600 to-purple-800 rounded-2xl shadow-md text-white p-4">
-                    <h3 className="text-lg font-semibold mb-1">
-                      {label}{p.word.toUpperCase()}
-                    </h3>
-                    <p className="text-sm text-purple-200 font-semibold">{p.heading}</p>
-                    <p className="text-sm text-purple-300 mt-1">{p.desc}</p>
-                  </div>
-                );
-              })}
-            </div>
-            <button
-              onClick={() => scrollSlider("right")}
-              className="absolute right-0 top-1/2 -translate-y-1/2 bg-purple-600 hover:bg-purple-500 text-white rounded-full w-8 h-8 flex items-center justify-center z-10 shadow-md"
-            >
-              ›
-            </button>
+            <select value={size} onChange={e => setSize(Number(e.target.value))} className="bg-purple-700 px-2 py-1 rounded">
+              <option value={8}>8 × 8</option>
+              <option value={10}>10 × 10</option>
+              <option value={15}>15 × 15</option>
+            </select>
           </div>
         </div>
-
-        {/* RIGHT: Words / Clues / Submit */}
-        <div className="bg-purple-800 rounded-xl p-5 shadow-md">
-          <h3 className="text-lg font-semibold mb-3">Manage Words & Clues</h3>
-
-          {/* Add new */}
-          <div className="space-y-2 mb-2">
-            <input
-              type="text"
-              value={newWord}
-              onChange={(e) => { setNewWord(e.target.value); setErrorMsg(""); }}
-              placeholder="Enter WORD"
-              className="w-full bg-purple-700 px-3 py-2 rounded-lg"
-            />
-            <input
-              type="text"
-              value={newHeading}
-              onChange={(e) => setNewHeading(e.target.value)}
-              placeholder="Reference heading"
-              className="w-full bg-purple-700 px-3 py-2 rounded-lg"
-            />
-            <input
-              type="text"
-              value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-              placeholder="Reference description"
-              className="w-full bg-purple-700 px-3 py-2 rounded-lg"
-            />
-            {errorMsg && (
-              <div className="text-red-300 text-sm">{errorMsg}</div>
-            )}
-            <button onClick={addWord} className="w-full bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-semibold">
-              ➕ Add Word
-            </button>
+        {/* RIGHT: Controls */}
+        <div className="bg-purple-800 p-5 rounded-lg shadow">
+          <h3 className="font-semibold mb-3">Manage Words & Clues</h3>
+          <input value={newWord} onChange={e => setNewWord(e.target.value)} placeholder="Word" className="w-full mb-2 px-2 py-1 bg-purple-700 rounded" />
+          <input value={newHeading} onChange={e => setNewHeading(e.target.value)} placeholder="Heading" className="w-full mb-2 px-2 py-1 bg-purple-700 rounded" />
+          <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description" className="w-full mb-2 px-2 py-1 bg-purple-700 rounded" />
+          <button onClick={addWord} className="w-full bg-purple-600 py-1 rounded">➕ Add Word</button>
+          <div className="mt-5">
+            <h4 className="font-bold mb-1">Across</h4>
+            {across.map(a => (
+              <div key={a.number}>{a.number}. {a.heading} — {a.desc}</div>
+            ))}
+            <h4 className="font-bold mt-3 mb-1">Down</h4>
+            {down.map(d => (
+              <div key={d.number}>{d.number}. {d.heading} — {d.desc}</div>
+            ))}
           </div>
-
-          {/* Existing list (show actual numbers if placed) */}
-          <div className="space-y-3 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-900 pr-2">
-            {wordsInput.map((item, index) => {
-              const nums = wordNumberMap.get(item.word.toUpperCase()) ?? [];
-              const badge = nums.length ? `#${Math.min(...nums)}` : "—";
-              return (
-                <div key={index} className="bg-purple-700 p-3 rounded-lg flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold">
-                      {badge} : {item.word.toUpperCase()}
-                    </span>
-                    <button onClick={() => deleteWord(index)} className="bg-red-500 hover:bg-red-400 text-white px-2 py-1 rounded">
-                      🗑
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={item.referenceHeading}
-                    onChange={(e) => updateWordField(index, "referenceHeading", e.target.value)}
-                    placeholder="Heading"
-                    className="bg-purple-600 px-2 py-1 rounded"
-                  />
-                  <input
-                    type="text"
-                    value={item.referenceDesc}
-                    onChange={(e) => updateWordField(index, "referenceDesc", e.target.value)}
-                    placeholder="Description"
-                    className="bg-purple-600 px-2 py-1 rounded"
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Clues */}
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <h4 className="font-semibold mb-2">ACROSS</h4>
-              <ul className="space-y-1 text-sm">
-                {across.map((a) => (
-                  <li key={`A${a.number}`}>
-                    <span className="font-bold">{a.number}. </span>
-                    <span className="italic">{a.heading}</span> — {a.desc} ({a.len})
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2">DOWN</h4>
-              <ul className="space-y-1 text-sm">
-                {down.map((d) => (
-                  <li key={`D${d.number}`}>
-                    <span className="font-bold">{d.number}. </span>
-                    <span className="italic">{d.heading}</span> — {d.desc} ({d.len})
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <button
-            onClick={handleSubmit}
-            disabled={status === "submitting"}
-            className="w-full mt-5 bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-semibold"
-          >
+          <button onClick={handleSubmit} className="w-full mt-5 bg-green-600 py-1 rounded">
             {status === "submitting" ? "Saving..." : "💾 Submit Crossword"}
           </button>
-          {status === "success" && <p className="mt-2 text-green-300 text-sm">Saved!</p>}
-          {status === "error" && <p className="mt-2 text-red-300 text-sm">Couldn’t save.</p>}
+          {status === "success" && <p className="text-green-300 mt-2">Saved!</p>}
+          {status === "error" && <p className="text-red-300 mt-2">Error saving</p>}
         </div>
       </div>
     </div>
