@@ -76,10 +76,10 @@ function canPlace(
     const cell = grid[rr][cc];
 
     // letter match if occupied
-    if (cell.isLetter && cell.ch !== word[i]) return false;
+    if (cell?.isLetter && cell?.ch !== word[i]) return false;
 
     // side adjacency check (perpendicular neighbors) only if this isn't a crossing
-    if (!cell.isLetter) {
+    if (!cell?.isLetter) {
       if (dir === "ACROSS") {
         const up = rr - 1;
         const dn = rr + 1;
@@ -388,8 +388,10 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       const payload = {
         title: "Crossword Puzzle",
         description: "Solve the crossword based on the given clues.",
-        typeId: 4,
+        surahId: "66607aa1d7639ce76b12ff08",
+        typeId: "68e5ff0422e84795f82789c4",
         crosswordPuzzleMatrix: grid,
+        references: wordsInput,
       };
       const res = await fetch("http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create", {
         method: "POST",
@@ -427,13 +429,13 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
 
                 // Empty cells are still visible as white squares with borders
                 if (!cell || !cell.isLetter) {
-  return (
-    <div
-      key={`${r}-${c}-empty`}
-      className="w-10 h-10"
-    />
-  );
-}
+                  return (
+                    <div
+                      key={`${r}-${c}-empty`}
+                      className="w-10 h-10"
+                    />
+                  );
+                }
 
                 return (
                   <div
