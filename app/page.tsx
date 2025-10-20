@@ -316,9 +316,9 @@ const page = () => {
   ];
   return (
     <div>
-      {/* <LocateItComp /> */}
+      <LocateItComp />
       <MazeComp />
-      {/* <CrosswordPuzzle /> */}
+      <CrosswordPuzzle />
     </div>
   );
 };
