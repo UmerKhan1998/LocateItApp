@@ -162,12 +162,28 @@ function buildNumbersAndClues(
         if (startAcross) {
           const w = pull(r, c, "ACROSS");
           const meta = takeMeta(w);
-          across.push({ number, word: w, heading: meta.heading, desc: meta.desc, row: r, col: c, len: w.length });
+          across.push({
+            number,
+            word: w,
+            heading: meta.heading,
+            desc: meta.desc,
+            row: r,
+            col: c,
+            len: w.length,
+          });
         }
         if (startDown) {
           const w = pull(r, c, "DOWN");
           const meta = takeMeta(w);
-          down.push({ number, word: w, heading: meta.heading, desc: meta.desc, row: r, col: c, len: w.length });
+          down.push({
+            number,
+            word: w,
+            heading: meta.heading,
+            desc: meta.desc,
+            row: r,
+            col: c,
+            len: w.length,
+          });
         }
         number++;
       }
@@ -291,7 +307,11 @@ function generateGrid(
 /** ---------- Component ---------- */
 const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   defaultWords = [
-    { word: "HEAT", referenceHeading: "Temperature", referenceDesc: "Form of energy that causes things to become warm" },
+    {
+      word: "HEAT",
+      referenceHeading: "Temperature",
+      referenceDesc: "Form of energy that causes things to become warm",
+    },
     { word: "APPLE", referenceHeading: "Fruit", referenceDesc: "A round fruit that keeps doctors away" },
     { word: "RABBIT", referenceHeading: "Animal", referenceDesc: "A small mammal with long ears and a love for carrots" },
     { word: "BIRD", referenceHeading: "Creature", referenceDesc: "A feathered animal that can usually fly" },
@@ -416,19 +436,80 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
 
   const deleteWord = (i: number) => setWordsInput((prev) => prev.filter((_, idx) => idx !== i));
 
+  /** ---------- Build requested submit payload ---------- */
+  const makeSubmitPayload = () => {
+    // Start with the exact placeholder row
+    const out: Array<{
+      isPattern: boolean;
+      aplhabet: string;
+      referenceNo: number | null;
+      referenceHeading: string;
+      referenceDesc: string;
+    }> = [
+      {
+        isPattern: false,
+        aplhabet: "",
+        referenceNo: null,
+        referenceHeading: "",
+        referenceDesc: "",
+      },
+    ];
+
+    // lookup heading/desc by WORD
+    const metaByWord = new Map<string, { heading: string; desc: string }>();
+    for (const w of wordsInput) {
+      metaByWord.set(w.word.toUpperCase(), {
+        heading: w.referenceHeading || "Clue",
+        desc: w.referenceDesc || "—",
+      });
+    }
+
+    // rows from placed words (with their numbers)
+    const rows = placedList
+      .map((p) => {
+        const wordU = p.word.toUpperCase();
+        const nums = wordNumberMap.get(wordU) ?? [];
+        if (!nums.length) return null;
+
+        const referenceNo = Math.min(...nums);
+        const meta = metaByWord.get(wordU) ?? {
+          heading: p.heading || "Clue",
+          desc: p.desc || "—",
+        };
+
+        return {
+          isPattern: true,
+          aplhabet: wordU.charAt(0) || "",
+          referenceNo,
+          referenceHeading: meta.heading,
+          referenceDesc: meta.desc,
+        };
+      })
+      .filter(Boolean) as Array<{
+      isPattern: boolean;
+      aplhabet: string;
+      referenceNo: number | null;
+      referenceHeading: string;
+      referenceDesc: string;
+    }>;
+
+    rows.sort((a, b) => (a.referenceNo ?? 0) - (b.referenceNo ?? 0));
+    out.push(...rows);
+    return out;
+  };
+
+  /** ---------- Submit ---------- */
   const handleSubmit = async () => {
     try {
       setStatus("submitting");
-      const payload = {
-        title: "Crossword Puzzle",
-        description: "Solve the crossword based on the given clues.",
-        typeId: 4,
-        crosswordPuzzleMatrix: grid,
-      };
+
+      // Build the array payload in the exact shape requested
+      const payload = makeSubmitPayload();
+
       const res = await fetch("http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload), // send only the requested array
       });
       if (!res.ok) throw new Error("Failed to save crossword");
       setStatus("success");
