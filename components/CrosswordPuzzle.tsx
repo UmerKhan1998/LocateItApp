@@ -359,6 +359,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     "idle" | "submitting" | "success" | "error"
   >("idle");
   const [errorMsg, setErrorMsg] = useState<string>("");
+  console.log("wordsInput", wordsInput);
 
   // UI inputs
   const [newWord, setNewWord] = useState("");
@@ -548,18 +549,27 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       return;
     }
 
-    // // ✅ Convert finalGrid to desired format
-    // const formattedGrid = grid.map((row) =>
-    //   row.map((cell) => ({
-    //     isPattern: cell.isPattern ?? false,
-    //     alphabet: cell.isPattern ? cell.alphabet || "" : "",
-    //     referenceNo: cell.referenceNo ?? null,
-    //     referenceHeading: cell.referenceHeading || "",
-    //     referenceDesc: cell.referenceDesc || "",
-    //   }))
-    // );
+    // ✅ Convert finalGrid to desired format
+    const formattedGrid = {
+      title: "Crossword Puzzle",
+      description:
+        "Solve the crossword based on the given clues related to the Surah.",
+      slug: "crossword-puzzle",
+      surahId: "66607aa1d7639ce76b12ff08",
+      typeId: "68f722ba23984bb3856295cd",
+      references: wordsInput,
+      crosswordPuzzleMatrix: grid.map((row) =>
+        row.map((cell) => ({
+          isPattern: cell.isLetter ?? false,
+          alphabet: cell.ch ? cell.ch || "" : "",
+          referenceNo: cell.startNo ?? null,
+          referenceHeading: cell.referenceHeading || "",
+          referenceDesc: cell.referenceDesc || "",
+        }))
+      ),
+    };
 
-    // console.log("🧩 Final crossword 2D matrix:", formattedGrid);
+    console.log("🧩 Final crossword 2D matrix:", formattedGrid);
 
     // ✅ Send to backend
     try {
@@ -568,7 +578,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // body: JSON.stringify(formattedGrid),
+          body: JSON.stringify(formattedGrid),
         }
       );
 
