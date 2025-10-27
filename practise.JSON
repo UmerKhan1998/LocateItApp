@@ -1,0 +1,869 @@
+{
+  "title": "Word Discovery",
+  "description": "Find the hidden words in the grid.",
+  "typeId": 7,
+  "gridSize": "12x12",
+  "matrix": [
+    [
+      {
+        "ch": "G",
+        "fixed": false
+      },
+      {
+        "ch": "W",
+        "fixed": false
+      },
+      {
+        "ch": "Q",
+        "fixed": false
+      },
+      {
+        "ch": "S",
+        "fixed": true
+      },
+      {
+        "ch": "O",
+        "fixed": false
+      },
+      {
+        "ch": "L",
+        "fixed": false
+      },
+      {
+        "ch": "R",
+        "fixed": true
+      },
+      {
+        "ch": "Y",
+        "fixed": false
+      },
+      {
+        "ch": "M",
+        "fixed": false
+      },
+      {
+        "ch": "L",
+        "fixed": false
+      },
+      {
+        "ch": "O",
+        "fixed": false
+      },
+      {
+        "ch": "T",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "H",
+        "fixed": false
+      },
+      {
+        "ch": "M",
+        "fixed": false
+      },
+      {
+        "ch": "V",
+        "fixed": false
+      },
+      {
+        "ch": "S",
+        "fixed": true
+      },
+      {
+        "ch": "S",
+        "fixed": false
+      },
+      {
+        "ch": "K",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": true
+      },
+      {
+        "ch": "W",
+        "fixed": false
+      },
+      {
+        "ch": "Z",
+        "fixed": false
+      },
+      {
+        "ch": "G",
+        "fixed": false
+      },
+      {
+        "ch": "R",
+        "fixed": true
+      },
+      {
+        "ch": "W",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "A",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": false
+      },
+      {
+        "ch": "O",
+        "fixed": false
+      },
+      {
+        "ch": "E",
+        "fixed": true
+      },
+      {
+        "ch": "O",
+        "fixed": false
+      },
+      {
+        "ch": "Y",
+        "fixed": false
+      },
+      {
+        "ch": "K",
+        "fixed": true
+      },
+      {
+        "ch": "L",
+        "fixed": false
+      },
+      {
+        "ch": "B",
+        "fixed": false
+      },
+      {
+        "ch": "E",
+        "fixed": true
+      },
+      {
+        "ch": "Y",
+        "fixed": false
+      },
+      {
+        "ch": "P",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "N",
+        "fixed": false
+      },
+      {
+        "ch": "J",
+        "fixed": false
+      },
+      {
+        "ch": "G",
+        "fixed": false
+      },
+      {
+        "ch": "N",
+        "fixed": true
+      },
+      {
+        "ch": "I",
+        "fixed": false
+      },
+      {
+        "ch": "N",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": true
+      },
+      {
+        "ch": "Y",
+        "fixed": false
+      },
+      {
+        "ch": "S",
+        "fixed": true
+      },
+      {
+        "ch": "V",
+        "fixed": false
+      },
+      {
+        "ch": "Y",
+        "fixed": false
+      },
+      {
+        "ch": "H",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "C",
+        "fixed": false
+      },
+      {
+        "ch": "X",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": false
+      },
+      {
+        "ch": "K",
+        "fixed": true
+      },
+      {
+        "ch": "A",
+        "fixed": false
+      },
+      {
+        "ch": "Y",
+        "fixed": false
+      },
+      {
+        "ch": "B",
+        "fixed": true
+      },
+      {
+        "ch": "U",
+        "fixed": true
+      },
+      {
+        "ch": "T",
+        "fixed": false
+      },
+      {
+        "ch": "B",
+        "fixed": false
+      },
+      {
+        "ch": "E",
+        "fixed": false
+      },
+      {
+        "ch": "R",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "H",
+        "fixed": false
+      },
+      {
+        "ch": "Z",
+        "fixed": false
+      },
+      {
+        "ch": "G",
+        "fixed": false
+      },
+      {
+        "ch": "R",
+        "fixed": true
+      },
+      {
+        "ch": "I",
+        "fixed": false
+      },
+      {
+        "ch": "G",
+        "fixed": false
+      },
+      {
+        "ch": "R",
+        "fixed": true
+      },
+      {
+        "ch": "P",
+        "fixed": false
+      },
+      {
+        "ch": "J",
+        "fixed": false
+      },
+      {
+        "ch": "I",
+        "fixed": false
+      },
+      {
+        "ch": "U",
+        "fixed": false
+      },
+      {
+        "ch": "P",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "A",
+        "fixed": false
+      },
+      {
+        "ch": "Z",
+        "fixed": false
+      },
+      {
+        "ch": "F",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": true
+      },
+      {
+        "ch": "V",
+        "fixed": false
+      },
+      {
+        "ch": "R",
+        "fixed": true
+      },
+      {
+        "ch": "A",
+        "fixed": true
+      },
+      {
+        "ch": "A",
+        "fixed": true
+      },
+      {
+        "ch": "M",
+        "fixed": false
+      },
+      {
+        "ch": "X",
+        "fixed": false
+      },
+      {
+        "ch": "Z",
+        "fixed": false
+      },
+      {
+        "ch": "M",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "T",
+        "fixed": false
+      },
+      {
+        "ch": "L",
+        "fixed": false
+      },
+      {
+        "ch": "D",
+        "fixed": false
+      },
+      {
+        "ch": "D",
+        "fixed": true
+      },
+      {
+        "ch": "E",
+        "fixed": true
+      },
+      {
+        "ch": "D",
+        "fixed": true
+      },
+      {
+        "ch": "K",
+        "fixed": true
+      },
+      {
+        "ch": "M",
+        "fixed": false
+      },
+      {
+        "ch": "B",
+        "fixed": true
+      },
+      {
+        "ch": "J",
+        "fixed": false
+      },
+      {
+        "ch": "W",
+        "fixed": false
+      },
+      {
+        "ch": "K",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "L",
+        "fixed": false
+      },
+      {
+        "ch": "C",
+        "fixed": false
+      },
+      {
+        "ch": "J",
+        "fixed": false
+      },
+      {
+        "ch": "C",
+        "fixed": true
+      },
+      {
+        "ch": "B",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": true
+      },
+      {
+        "ch": "A",
+        "fixed": true
+      },
+      {
+        "ch": "P",
+        "fixed": false
+      },
+      {
+        "ch": "B",
+        "fixed": false
+      },
+      {
+        "ch": "E",
+        "fixed": true
+      },
+      {
+        "ch": "M",
+        "fixed": false
+      },
+      {
+        "ch": "X",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "U",
+        "fixed": false
+      },
+      {
+        "ch": "E",
+        "fixed": false
+      },
+      {
+        "ch": "T",
+        "fixed": true
+      },
+      {
+        "ch": "G",
+        "fixed": false
+      },
+      {
+        "ch": "M",
+        "fixed": false
+      },
+      {
+        "ch": "Y",
+        "fixed": true
+      },
+      {
+        "ch": "M",
+        "fixed": false
+      },
+      {
+        "ch": "J",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": false
+      },
+      {
+        "ch": "V",
+        "fixed": false
+      },
+      {
+        "ch": "E",
+        "fixed": true
+      },
+      {
+        "ch": "F",
+        "fixed": false
+      }
+    ],
+    [
+      {
+        "ch": "R",
+        "fixed": false
+      },
+      {
+        "ch": "E",
+        "fixed": true
+      },
+      {
+        "ch": "R",
+        "fixed": false
+      },
+      {
+        "ch": "Q",
+        "fixed": false
+      },
+      {
+        "ch": "K",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": false
+      },
+      {
+        "ch": "P",
+        "fixed": false
+      },
+      {
+        "ch": "D",
+        "fixed": false
+      },
+      {
+        "ch": "T",
+        "fixed": false
+      },
+      {
+        "ch": "A",
+        "fixed": false
+      },
+      {
+        "ch": "T",
+        "fixed": false
+      },
+      {
+        "ch": "T",
+        "fixed": true
+      }
+    ],
+    [
+      {
+        "ch": "D",
+        "fixed": true
+      },
+      {
+        "ch": "N",
+        "fixed": false
+      },
+      {
+        "ch": "J",
+        "fixed": false
+      },
+      {
+        "ch": "L",
+        "fixed": false
+      },
+      {
+        "ch": "S",
+        "fixed": true
+      },
+      {
+        "ch": "D",
+        "fixed": true
+      },
+      {
+        "ch": "U",
+        "fixed": true
+      },
+      {
+        "ch": "O",
+        "fixed": true
+      },
+      {
+        "ch": "L",
+        "fixed": true
+      },
+      {
+        "ch": "C",
+        "fixed": true
+      },
+      {
+        "ch": "S",
+        "fixed": false
+      },
+      {
+        "ch": "J",
+        "fixed": false
+      }
+    ]
+  ],
+  "words": [
+    {
+      "word": "RESURRECTED",
+      "direction": "SW",
+      "path": [
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 3
+        },
+        {
+          "row": 11,
+          "col": 2
+        },
+        {
+          "row": 12,
+          "col": 1
+        }
+      ],
+      "coordinates": [
+        "(A11,B2)",
+        "(A10,B3)",
+        "(A9,B4)",
+        "(A8,B5)",
+        "(A7,B6)",
+        "(A6,B7)",
+        "(A5,B8)",
+        "(A4,B9)",
+        "(A3,B10)",
+        "(A2,B11)",
+        "(A1,B12)"
+      ]
+    },
+    {
+      "word": "AKARBAKAR",
+      "direction": "N",
+      "path": [
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 7
+        }
+      ],
+      "coordinates": [
+        "(A7,B9)",
+        "(A7,B8)",
+        "(A7,B7)",
+        "(A7,B6)",
+        "(A7,B5)",
+        "(A7,B4)",
+        "(A7,B3)",
+        "(A7,B2)",
+        "(A7,B1)"
+      ]
+    },
+    {
+      "word": "DARKNESS",
+      "direction": "N",
+      "path": [
+        {
+          "row": 8,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 4
+        }
+      ],
+      "coordinates": [
+        "(A4,B8)",
+        "(A4,B7)",
+        "(A4,B6)",
+        "(A4,B5)",
+        "(A4,B4)",
+        "(A4,B3)",
+        "(A4,B2)",
+        "(A4,B1)"
+      ]
+    },
+    {
+      "word": "CLOUDS",
+      "direction": "W",
+      "path": [
+        {
+          "row": 12,
+          "col": 10
+        },
+        {
+          "row": 12,
+          "col": 9
+        },
+        {
+          "row": 12,
+          "col": 8
+        },
+        {
+          "row": 12,
+          "col": 7
+        },
+        {
+          "row": 12,
+          "col": 6
+        },
+        {
+          "row": 12,
+          "col": 5
+        }
+      ],
+      "coordinates": [
+        "(A10,B12)",
+        "(A9,B12)",
+        "(A8,B12)",
+        "(A7,B12)",
+        "(A6,B12)",
+        "(A5,B12)"
+      ]
+    },
+    {
+      "word": "RABEET",
+      "direction": "SE",
+      "path": [
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 11,
+          "col": 12
+        }
+      ],
+      "coordinates": [
+        "(A7,B6)",
+        "(A8,B7)",
+        "(A9,B8)",
+        "(A10,B9)",
+        "(A11,B10)",
+        "(A12,B11)"
+      ]
+    },
+    {
+      "word": "DAY",
+      "direction": "S",
+      "path": [
+        {
+          "row": 8,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 6
+        }
+      ],
+      "coordinates": ["(A6,B8)", "(A6,B9)", "(A6,B10)"]
+    }
+  ]
+}
