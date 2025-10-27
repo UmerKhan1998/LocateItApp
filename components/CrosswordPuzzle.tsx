@@ -153,9 +153,13 @@ function buildNumbersAndClues(
       if (!grid[r][c].isLetter) continue;
 
       const startAcross =
-        (c === 0 || !grid[r][c - 1].isLetter) && (c + 1 < W && grid[r][c + 1].isLetter);
+        (c === 0 || !grid[r][c - 1].isLetter) &&
+        c + 1 < W &&
+        grid[r][c + 1].isLetter;
       const startDown =
-        (r === 0 || !grid[r - 1][c].isLetter) && (r + 1 < H && grid[r + 1][c].isLetter);
+        (r === 0 || !grid[r - 1][c].isLetter) &&
+        r + 1 < H &&
+        grid[r + 1][c].isLetter;
 
       if (startAcross || startDown) {
         grid[r][c].startNo = number;
@@ -197,7 +201,10 @@ function buildNumbersAndClues(
 function generateGrid(
   size: number,
   words: WordData[]
-): { grid: CrosswordCell[][]; placedMeta: { word: string; heading: string; desc: string }[] } {
+): {
+  grid: CrosswordCell[][];
+  placedMeta: { word: string; heading: string; desc: string }[];
+} {
   const items = words
     .map((w) => ({
       word: w.word.trim().toLowerCase(),
@@ -312,19 +319,45 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
       referenceHeading: "Temperature",
       referenceDesc: "Form of energy that causes things to become warm",
     },
-    { word: "APPLE", referenceHeading: "Fruit", referenceDesc: "A round fruit that keeps doctors away" },
-    { word: "RABBIT", referenceHeading: "Animal", referenceDesc: "A small mammal with long ears and a love for carrots" },
-    { word: "BIRD", referenceHeading: "Creature", referenceDesc: "A feathered animal that can usually fly" },
-    { word: "MINT", referenceHeading: "Herb", referenceDesc: "A fragrant plant often used for flavoring or freshness" },
-    { word: "TOPIC", referenceHeading: "Subject", referenceDesc: "The main idea or theme of a discussion" },
-    { word: "TREE", referenceHeading: "Plant", referenceDesc: "A tall plant with a trunk, branches, and leaves" },
+    {
+      word: "APPLE",
+      referenceHeading: "Fruit",
+      referenceDesc: "A round fruit that keeps doctors away",
+    },
+    {
+      word: "RABBIT",
+      referenceHeading: "Animal",
+      referenceDesc: "A small mammal with long ears and a love for carrots",
+    },
+    {
+      word: "BIRD",
+      referenceHeading: "Creature",
+      referenceDesc: "A feathered animal that can usually fly",
+    },
+    {
+      word: "MINT",
+      referenceHeading: "Herb",
+      referenceDesc: "A fragrant plant often used for flavoring or freshness",
+    },
+    {
+      word: "TOPIC",
+      referenceHeading: "Subject",
+      referenceDesc: "The main idea or theme of a discussion",
+    },
+    {
+      word: "TREE",
+      referenceHeading: "Plant",
+      referenceDesc: "A tall plant with a trunk, branches, and leaves",
+    },
   ],
   defaultSize = 10,
 }) => {
   const [size, setSize] = useState<number>(defaultSize);
   const [wordsInput, setWordsInput] = useState<WordData[]>(defaultWords);
   const [showAnswers, setShowAnswers] = useState(false);
-  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "submitting" | "success" | "error"
+  >("idle");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
   // UI inputs
@@ -364,7 +397,10 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
   const sliderRef = useRef<HTMLDivElement | null>(null);
   const scrollSlider = (dir: "left" | "right") => {
     if (!sliderRef.current) return;
-    sliderRef.current.scrollBy({ left: dir === "left" ? -240 : 240, behavior: "smooth" });
+    sliderRef.current.scrollBy({
+      left: dir === "left" ? -240 : 240,
+      behavior: "smooth",
+    });
   };
 
   /** Check if a new word can connect to current grid */
@@ -409,7 +445,9 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
 
     // connectivity validation against current grid
     if (!canConnectToGrid(w)) {
-      setErrorMsg(`“${w}” can’t connect to the existing crossword. Try another word or size.`);
+      setErrorMsg(
+        `“${w}” can’t connect to the existing crossword. Try another word or size.`
+      );
       return; // DO NOT add
     }
 
@@ -434,7 +472,8 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     });
   };
 
-  const deleteWord = (i: number) => setWordsInput((prev) => prev.filter((_, idx) => idx !== i));
+  const deleteWord = (i: number) =>
+    setWordsInput((prev) => prev.filter((_, idx) => idx !== i));
 
   /** ---------- Build requested submit payload ---------- */
   const makeSubmitPayload = () => {
@@ -498,31 +537,60 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
     return out;
   };
 
+  console.log("grid", grid);
+
   /** ---------- Submit ---------- */
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!grid || grid.length === 0) {
+      alert("No crossword grid available!");
+      return;
+    }
+
+    // // ✅ Convert finalGrid to desired format
+    // const formattedGrid = grid.map((row) =>
+    //   row.map((cell) => ({
+    //     isPattern: cell.isPattern ?? false,
+    //     alphabet: cell.isPattern ? cell.alphabet || "" : "",
+    //     referenceNo: cell.referenceNo ?? null,
+    //     referenceHeading: cell.referenceHeading || "",
+    //     referenceDesc: cell.referenceDesc || "",
+    //   }))
+    // );
+
+    // console.log("🧩 Final crossword 2D matrix:", formattedGrid);
+
+    // ✅ Send to backend
     try {
-      setStatus("submitting");
+      const res = await fetch(
+        "http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // body: JSON.stringify(formattedGrid),
+        }
+      );
 
-      // Build the array payload in the exact shape requested
-      const payload = makeSubmitPayload();
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || "Failed to save crossword");
+      }
 
-      const res = await fetch("http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload), // send only the requested array
-      });
-      if (!res.ok) throw new Error("Failed to save crossword");
-      setStatus("success");
-    } catch {
-      setStatus("error");
-    } finally {
-      setTimeout(() => setStatus("idle"), 2500);
+      const result = await res.json();
+      console.log("✅ Crossword successfully saved:", result);
+      alert("Crossword submitted successfully!");
+    } catch (error) {
+      console.error("❌ Error submitting crossword:", error);
+      // alert("Error submitting crossword: " + error.message);
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-6 text-white">
-      <h2 className="text-3xl font-bold text-center mb-6">🧩 Crossword Puzzle Generator</h2>
+      <h2 className="text-3xl font-bold text-center mb-6">
+        🧩 Crossword Puzzle Generator
+      </h2>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* LEFT: Grid + cards */}
@@ -554,7 +622,7 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                       </span>
                     )}
                     <span className="text-xl select-none">
-                      {(showAnswers || cell.prefill) ? cell.ch.toUpperCase() : ""}
+                      {showAnswers || cell.prefill ? cell.ch.toUpperCase() : ""}
                     </span>
                   </div>
                 );
@@ -571,7 +639,9 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
             </button>
 
             <div className="flex items-center gap-2">
-              <label htmlFor="size" className="text-sm">Grid Size:</label>
+              <label htmlFor="size" className="text-sm">
+                Grid Size:
+              </label>
               <select
                 id="size"
                 value={size}
@@ -601,11 +671,17 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                 const nums = wordNumberMap.get(p.word.toUpperCase()) ?? [];
                 const label = nums.length ? `#${Math.min(...nums)} — ` : "";
                 return (
-                  <div key={i} className="flex-shrink-0 w-64 bg-gradient-to-b from-purple-600 to-purple-800 rounded-2xl shadow-md text-white p-4">
+                  <div
+                    key={i}
+                    className="flex-shrink-0 w-64 bg-gradient-to-b from-purple-600 to-purple-800 rounded-2xl shadow-md text-white p-4"
+                  >
                     <h3 className="text-lg font-semibold mb-1">
-                      {label}{p.word.toUpperCase()}
+                      {label}
+                      {p.word.toUpperCase()}
                     </h3>
-                    <p className="text-sm text-purple-200 font-semibold">{p.heading}</p>
+                    <p className="text-sm text-purple-200 font-semibold">
+                      {p.heading}
+                    </p>
                     <p className="text-sm text-purple-300 mt-1">{p.desc}</p>
                   </div>
                 );
@@ -629,7 +705,10 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
             <input
               type="text"
               value={newWord}
-              onChange={(e) => { setNewWord(e.target.value); setErrorMsg(""); }}
+              onChange={(e) => {
+                setNewWord(e.target.value);
+                setErrorMsg("");
+              }}
               placeholder="Enter WORD"
               className="w-full bg-purple-700 px-3 py-2 rounded-lg"
             />
@@ -647,10 +726,11 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
               placeholder="Reference description"
               className="w-full bg-purple-700 px-3 py-2 rounded-lg"
             />
-            {errorMsg && (
-              <div className="text-red-300 text-sm">{errorMsg}</div>
-            )}
-            <button onClick={addWord} className="w-full bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-semibold">
+            {errorMsg && <div className="text-red-300 text-sm">{errorMsg}</div>}
+            <button
+              onClick={addWord}
+              className="w-full bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg font-semibold"
+            >
               ➕ Add Word
             </button>
           </div>
@@ -661,26 +741,36 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
               const nums = wordNumberMap.get(item.word.toUpperCase()) ?? [];
               const badge = nums.length ? `#${Math.min(...nums)}` : "—";
               return (
-                <div key={index} className="bg-purple-700 p-3 rounded-lg flex flex-col gap-2">
+                <div
+                  key={index}
+                  className="bg-purple-700 p-3 rounded-lg flex flex-col gap-2"
+                >
                   <div className="flex justify-between items-center">
                     <span className="font-semibold">
                       {badge} : {item.word.toUpperCase()}
                     </span>
-                    <button onClick={() => deleteWord(index)} className="bg-red-500 hover:bg-red-400 text-white px-2 py-1 rounded">
+                    <button
+                      onClick={() => deleteWord(index)}
+                      className="bg-red-500 hover:bg-red-400 text-white px-2 py-1 rounded"
+                    >
                       🗑
                     </button>
                   </div>
                   <input
                     type="text"
                     value={item.referenceHeading}
-                    onChange={(e) => updateWordField(index, "referenceHeading", e.target.value)}
+                    onChange={(e) =>
+                      updateWordField(index, "referenceHeading", e.target.value)
+                    }
                     placeholder="Heading"
                     className="bg-purple-600 px-2 py-1 rounded"
                   />
                   <input
                     type="text"
                     value={item.referenceDesc}
-                    onChange={(e) => updateWordField(index, "referenceDesc", e.target.value)}
+                    onChange={(e) =>
+                      updateWordField(index, "referenceDesc", e.target.value)
+                    }
                     placeholder="Description"
                     className="bg-purple-600 px-2 py-1 rounded"
                   />
@@ -697,7 +787,8 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                 {across.map((a) => (
                   <li key={`A${a.number}`}>
                     <span className="font-bold">{a.number}. </span>
-                    <span className="italic">{a.heading}</span> — {a.desc} ({a.len})
+                    <span className="italic">{a.heading}</span> — {a.desc} (
+                    {a.len})
                   </li>
                 ))}
               </ul>
@@ -708,7 +799,8 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
                 {down.map((d) => (
                   <li key={`D${d.number}`}>
                     <span className="font-bold">{d.number}. </span>
-                    <span className="italic">{d.heading}</span> — {d.desc} ({d.len})
+                    <span className="italic">{d.heading}</span> — {d.desc} (
+                    {d.len})
                   </li>
                 ))}
               </ul>
@@ -722,8 +814,12 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
           >
             {status === "submitting" ? "Saving..." : "💾 Submit Crossword"}
           </button>
-          {status === "success" && <p className="mt-2 text-green-300 text-sm">Saved!</p>}
-          {status === "error" && <p className="mt-2 text-red-300 text-sm">Couldn’t save.</p>}
+          {status === "success" && (
+            <p className="mt-2 text-green-300 text-sm">Saved!</p>
+          )}
+          {status === "error" && (
+            <p className="mt-2 text-red-300 text-sm">Couldn’t save.</p>
+          )}
         </div>
       </div>
     </div>

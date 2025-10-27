@@ -11,6 +11,9 @@ const LocateItComp = dynamic(() => import("@/components/LocateItComp"), {
 const MazeComp = dynamic(() => import("@/components/MazeComp"), {
   ssr: false,
 });
+const WordDiscovery = dynamic(() => import("@/components/WordDiscovery"), {
+  ssr: false,
+});
 
 const page = () => {
   const gridData = [
@@ -316,9 +319,10 @@ const page = () => {
   ];
   return (
     <div>
-      <LocateItComp />
-      <MazeComp />
+      {/* <LocateItComp />
+      <MazeComp /> */}
       <CrosswordPuzzle />
+      <WordDiscovery />
     </div>
   );
 };
