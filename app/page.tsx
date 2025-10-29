@@ -14,14 +14,21 @@ const MazeComp = dynamic(() => import("@/components/MazeComp"), {
 const WordDiscovery = dynamic(() => import("@/components/WordDiscovery"), {
   ssr: false,
 });
+const WordDidscoverYPayload = dynamic(
+  () => import("@/components/WordDidscoveryPayload"),
+  {
+    ssr: false,
+  }
+);
 
 const page = () => {
   return (
     <div>
-      {/* <LocateItComp />
-      <MazeComp /> 
-      <CrosswordPuzzle /> */}
+      <LocateItComp />
+      <MazeComp />
+      <CrosswordPuzzle />
       <WordDiscovery />
+      {/* <WordDidscoverYPayload /> */}
     </div>
   );
 };
