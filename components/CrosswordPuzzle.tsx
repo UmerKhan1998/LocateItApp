@@ -205,108 +205,674 @@ function generateGrid(
   grid: CrosswordCell[][];
   placedMeta: { word: string; heading: string; desc: string }[];
 } {
-  const items = words
-    .map((w) => ({
-      word: w.word.trim().toLowerCase(),
-      heading: w.referenceHeading,
-      desc: w.referenceDesc,
-    }))
-    .filter((w) => w.word.length > 1);
-  items.sort((a, b) => b.word.length - a.word.length);
+  // const items = words
+  //   .map((w) => ({
+  //     word: w.word.trim().toLowerCase(),
+  //     heading: w.referenceHeading,
+  //     desc: w.referenceDesc,
+  //   }))
+  //   .filter((w) => w.word.length > 1);
+  // items.sort((a, b) => b.word.length - a.word.length);
 
-  const attempts = 12;
-  let best = { grid: [] as CrosswordCell[][], placedMeta: [] as any[] };
+  // const attempts = 12;
+  // let best = { grid: [] as CrosswordCell[][], placedMeta: [] as any[] };
 
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const grid = range(size).map(() => range(size).map(newCell));
-    const placed: typeof items = [];
+  // for (let attempt = 0; attempt < attempts; attempt++) {
+  //   const grid = range(size).map(() => range(size).map(newCell));
+  //   const placed: typeof items = [];
 
-    if (!items.length) return { grid, placedMeta: [] };
+  //   if (!items.length) return { grid, placedMeta: [] };
 
-    // place first (longest) horizontally near center
-    {
-      const first = items[0];
-      const r = Math.floor(size / 2);
-      const c = Math.max(0, Math.floor((size - first.word.length) / 2));
-      let ok = false;
-      if (canPlace(grid, r, c, first.word, "ACROSS")) {
-        placeWord(grid, r, c, first.word, "ACROSS");
-        placed.push(first);
-        ok = true;
-      } else {
-        outer: for (let rr = 0; rr < size; rr++) {
-          for (let cc = 0; cc < size; cc++) {
-            if (canPlace(grid, rr, cc, first.word, "ACROSS")) {
-              placeWord(grid, rr, cc, first.word, "ACROSS");
-              placed.push(first);
-              ok = true;
-              break outer;
-            }
-          }
-        }
-      }
-      if (!ok) continue;
-    }
+  //   // place first (longest) horizontally near center
+  //   {
+  //     const first = items[0];
+  //     const r = Math.floor(size / 2);
+  //     const c = Math.max(0, Math.floor((size - first.word.length) / 2));
+  //     let ok = false;
+  //     if (canPlace(grid, r, c, first.word, "ACROSS")) {
+  //       placeWord(grid, r, c, first.word, "ACROSS");
+  //       placed.push(first);
+  //       ok = true;
+  //     } else {
+  //       outer: for (let rr = 0; rr < size; rr++) {
+  //         for (let cc = 0; cc < size; cc++) {
+  //           if (canPlace(grid, rr, cc, first.word, "ACROSS")) {
+  //             placeWord(grid, rr, cc, first.word, "ACROSS");
+  //             placed.push(first);
+  //             ok = true;
+  //             break outer;
+  //           }
+  //         }
+  //       }
+  //     }
+  //     if (!ok) continue;
+  //   }
 
-    let dir: "ACROSS" | "DOWN" = "DOWN";
-    for (let i = 1; i < items.length; i++) {
-      const { word } = items[i];
+  //   let dir: "ACROSS" | "DOWN" = "DOWN";
+  //   for (let i = 1; i < items.length; i++) {
+  //     const { word } = items[i];
 
-      const candidates: { r: number; c: number; dir: "ACROSS" | "DOWN" }[] = [];
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          const cell = grid[r][c];
-          if (!cell.isLetter) continue;
-          for (let k = 0; k < word.length; k++) {
-            if (word[k] !== cell.ch) continue;
+  //     const candidates: { r: number; c: number; dir: "ACROSS" | "DOWN" }[] = [];
+  //     for (let r = 0; r < size; r++) {
+  //       for (let c = 0; c < size; c++) {
+  //         const cell = grid[r][c];
+  //         if (!cell.isLetter) continue;
+  //         for (let k = 0; k < word.length; k++) {
+  //           if (word[k] !== cell.ch) continue;
 
-            if (dir === "ACROSS") {
-              const startC = c - k;
-              if (canPlace(grid, r, startC, word, "ACROSS"))
-                candidates.push({ r, c: startC, dir: "ACROSS" });
-            } else {
-              const startR = r - k;
-              if (canPlace(grid, startR, c, word, "DOWN"))
-                candidates.push({ r: startR, c, dir: "DOWN" });
-            }
-          }
-        }
-      }
+  //           if (dir === "ACROSS") {
+  //             const startC = c - k;
+  //             if (canPlace(grid, r, startC, word, "ACROSS"))
+  //               candidates.push({ r, c: startC, dir: "ACROSS" });
+  //           } else {
+  //             const startR = r - k;
+  //             if (canPlace(grid, startR, c, word, "DOWN"))
+  //               candidates.push({ r: startR, c, dir: "DOWN" });
+  //           }
+  //         }
+  //       }
+  //     }
 
-      if (candidates.length === 0) {
-        const alt: "ACROSS" | "DOWN" = dir === "ACROSS" ? "DOWN" : "ACROSS";
-        for (let r = 0; r < size; r++) {
-          for (let c = 0; c < size; c++) {
-            const cell = grid[r][c];
-            if (!cell.isLetter) continue;
-            for (let k = 0; k < word.length; k++) {
-              if (word[k] !== cell.ch) continue;
-              if (alt === "ACROSS") {
-                const startC = c - k;
-                if (canPlace(grid, r, startC, word, "ACROSS"))
-                  candidates.push({ r, c: startC, dir: "ACROSS" });
-              } else {
-                const startR = r - k;
-                if (canPlace(grid, startR, c, word, "DOWN"))
-                  candidates.push({ r: startR, c, dir: "DOWN" });
-              }
-            }
-          }
-        }
-      }
+  //     if (candidates.length === 0) {
+  //       const alt: "ACROSS" | "DOWN" = dir === "ACROSS" ? "DOWN" : "ACROSS";
+  //       for (let r = 0; r < size; r++) {
+  //         for (let c = 0; c < size; c++) {
+  //           const cell = grid[r][c];
+  //           if (!cell.isLetter) continue;
+  //           for (let k = 0; k < word.length; k++) {
+  //             if (word[k] !== cell.ch) continue;
+  //             if (alt === "ACROSS") {
+  //               const startC = c - k;
+  //               if (canPlace(grid, r, startC, word, "ACROSS"))
+  //                 candidates.push({ r, c: startC, dir: "ACROSS" });
+  //             } else {
+  //               const startR = r - k;
+  //               if (canPlace(grid, startR, c, word, "DOWN"))
+  //                 candidates.push({ r: startR, c, dir: "DOWN" });
+  //             }
+  //           }
+  //         }
+  //       }
+  //     }
 
-      if (candidates.length > 0) {
-        const pick = candidates[Math.floor(Math.random() * candidates.length)];
-        placeWord(grid, pick.r, pick.c, word, pick.dir);
-        placed.push(items[i]);
-        dir = dir === "ACROSS" ? "DOWN" : "ACROSS";
-      }
-    }
+  //     if (candidates.length > 0) {
+  //       const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  //       placeWord(grid, pick.r, pick.c, word, pick.dir);
+  //       placed.push(items[i]);
+  //       dir = dir === "ACROSS" ? "DOWN" : "ACROSS";
+  //     }
+  //   }
 
-    if (!best.grid.length || placed.length > best.placedMeta.length) {
-      best = { grid, placedMeta: placed };
-    }
-  }
+  //   if (!best.grid.length || placed.length > best.placedMeta.length) {
+  //     best = { grid, placedMeta: placed };
+  //   }
+  // }
+
+  // console.log("🧩 Final crossword 2D matrix:", best);
+
+  let best = {
+    grid: [
+      [
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: true,
+          ch: "n",
+          startNo: 1,
+          acrossId: null,
+          downId: null,
+          prefill: true,
+          referenceNo: [1],
+          wordReference: [1],
+          referenceHeading: "Prophet's Name",
+          referenceDesc:
+            "The Prophet who called his people to worship Allah alone.",
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+      ],
+      [
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: true,
+          ch: "f",
+          startNo: 2,
+          acrossId: null,
+          downId: null,
+          prefill: true,
+          referenceNo: [2],
+          wordReference: [2],
+          referenceHeading: "Event",
+          referenceDesc: "The great disaster that destroyed the disbelievers.",
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: true,
+          ch: "u",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [1],
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+      ],
+      [
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: true,
+          ch: "a",
+          startNo: 3,
+          acrossId: null,
+          downId: null,
+          prefill: true,
+          referenceNo: [3],
+          wordReference: [3],
+          referenceHeading: "Creator",
+          referenceDesc:
+            "The One who commanded Prophet Nuh to deliver His message.",
+        },
+        {
+          isLetter: true,
+          ch: "l",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [2, 3],
+        },
+        {
+          isLetter: true,
+          ch: "l",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [3],
+        },
+        {
+          isLetter: true,
+          ch: "a",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [3],
+        },
+        {
+          isLetter: true,
+          ch: "h",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [1, 3],
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+      ],
+      [
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: true,
+          ch: "o",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [2],
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+      ],
+      [
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: true,
+          ch: "p",
+          startNo: 4,
+          acrossId: null,
+          downId: null,
+          prefill: true,
+          referenceNo: [4],
+          wordReference: [4],
+          referenceHeading: "Nation",
+          referenceDesc: "Those who rejected the message of Prophet Nuh.",
+        },
+        {
+          isLetter: true,
+          ch: "e",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [4],
+        },
+        {
+          isLetter: true,
+          ch: "o",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [2, 4],
+        },
+        {
+          isLetter: true,
+          ch: "p",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [4],
+        },
+        {
+          isLetter: true,
+          ch: "l",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [4],
+        },
+        {
+          isLetter: true,
+          ch: "e",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [4],
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+      ],
+      [
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: true,
+          ch: "d",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+          wordReference: [2],
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+      ],
+      [
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+      ],
+      [
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+        {
+          isLetter: false,
+          ch: "",
+          startNo: null,
+          acrossId: null,
+          downId: null,
+          prefill: false,
+        },
+      ],
+    ],
+    placedMeta: [],
+  };
 
   return best;
 }
@@ -563,8 +1129,8 @@ const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
           isPattern: cell.isLetter ?? false,
           alphabet: cell.ch ? cell.ch || "" : "",
           referenceNo: cell.startNo ?? null,
-          referenceHeading: cell.referenceHeading || "",
-          referenceDesc: cell.referenceDesc || "",
+          referenceHeading: "",
+          referenceDesc: "",
         }))
       ),
     };

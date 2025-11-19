@@ -2,6 +2,10 @@
 
 import dynamic from "next/dynamic";
 
+const FillInTheBlanks = dynamic(() => import("@/components/FillInTheBlanks"), {
+  ssr: false,
+});
+
 const CrosswordPuzzle = dynamic(() => import("@/components/CrosswordPuzzle"), {
   ssr: false,
 });
@@ -23,13 +27,24 @@ const WordDidscoverYPayload = dynamic(
 
 const page = () => {
   return (
-    <div>
-      <LocateItComp />
-      <MazeComp />
-      <CrosswordPuzzle />
-      <WordDiscovery />
+    <>
+      {/* <LocateItComp />
+      <MazeComp /> */}
+      {/* <CrosswordPuzzle /> */}
+      <FillInTheBlanks
+        text={`By those [b1] sent forth in succession, those that blow violently, 
+         and scatter [b2] far and wide, And by those angels who bring criterion [b3]; 
+         ... Woe on that Day to the deniers [b4]!`}
+        answers={[
+          { id: "b1", correct: "winds" },
+          { id: "b2", correct: "rainclouds" },
+          { id: "b3", correct: "1" },
+          { id: "b4", correct: "3" },
+        ]}
+      />
+      {/* <WordDiscovery /> */}
       {/* <WordDidscoverYPayload /> */}
-    </div>
+    </>
   );
 };
 
