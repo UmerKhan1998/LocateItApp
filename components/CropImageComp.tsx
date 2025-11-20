@@ -1,323 +1,111 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 
-type Selection = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  isActive: boolean;
+type Stroke = {
+  color: string;
+  path: string;
+  strokeWidth: number;
 };
 
-const ImageCropperSvgExport: React.FC = () => {
-  const [imageURL, setImageURL] = useState<string | null>(null);
-  const [selection, setSelection] = useState<Selection>({
-    x: 0,
-    y: 0,
-    width: 0,
-    height: 0,
-    isActive: false,
-  });
-  const [dragging, setDragging] = useState(false);
+// Example: your path data
+const exampleStrokes: Stroke[] = [
+  {
+    color: "black",
+    path: "M166.5,82 L168.445068359375,82.5 L171.94305419921875,85.94305419921875 L174.44677734375,88.44677734375 L176.94491577148438,90.94491577148438 L182.44293212890625,96.94293212890625 L186.88876342773438,102.38876342773438 L192.81520080566406,108.315185546875 L194.88729858398438,111.33096313476562 L200.83502197265625,116.3900146484375 L210.34141540527344,126.34140014648438 L221.77874755859375,136.83404541015625 L227.8331298828125,141.38876342773438 L231.94715881347656,145.94717407226562 L232.75,147.75 L233.71817016601562,148.21817016601562 L234,149.43936157226562 L233.5,155.39120483398438 L233,157.88482666015625 L230.55535888671875,169.27853393554688 L229,182.77914428710938 L225.5554656982422,196.27813720703125 L223.55712890625,204.771484375 L222,214.82382202148438 L221.5,218.97296142578125 L221,220.94369506835938 L221,222.21875 L221,222.71572875976562 L221,223.5 L221,224.716796875 L221,226.44595336914062 L221,231.3897705078125 L221,237.39093017578125 L221,241.89071655273438 L220.5,246.9462890625 L220.5,251.44189453125 L220.5,252.44491577148438 L220.5,254.7244873046875 L220.5,255 L220,255.5 L218.5550994873047,256 L213.669921875,258.943359375 L201.21922302246094,264.890380859375 L185.26632690429688,271.3934631347656 L179.16627502441406,273.944580078125 L172.60813903808594,277.4459228515625 L171.051025390625,278 L169.28073120117188,279.5 L168.7777557373047,280.22222900390625 L166.05421447753906,286.8916015625 L164.0549774169922,292.3350830078125 L160.0515899658203,300.84521484375 L156.06069946289062,307.87860107421875 L152.55804443359375,312.94195556640625 L150.75,315.5 L149.75,317 L149.5,317.5 L149,318.71697998046875 L149,320.4407958984375 L148,324.8868408203125 L148,333.31964111328125 L147.5,340.88671875 L147.5,347.83123779296875 L147.5,349.89306640625 L147.5,354.88201904296875 L148,357.94287109375 L148,359.21868896484375 L148,359.7198486328125 L148,360",
+    strokeWidth: 5,
+  },
+];
+
+const DownloadSvgFromPaths: React.FC = () => {
   const [svgCode, setSvgCode] = useState<string>("");
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  // You can pass your own strokes instead of exampleStrokes
+  const strokes: Stroke[] = exampleStrokes;
 
-  // Upload image
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Adjust these to your drawing's bounds
+  const svgWidth = 400;
+  const svgHeight = 400;
 
-    setImageURL(URL.createObjectURL(file));
-    setSelection({ x: 0, y: 0, width: 0, height: 0, isActive: false });
-    setSvgCode("");
+  const buildSvgString = (paths: Stroke[]): string => {
+    const pathsMarkup = paths
+      .map(
+        (s) =>
+          `<path d="${s.path}" stroke="${s.color}" stroke-width="${s.strokeWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round" />`
+      )
+      .join("\n  ");
+
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">
+  ${pathsMarkup}
+</svg>`;
+
+    return svg;
   };
 
-  // Convert mouse coords → container coords
-  const getRelativePos = (e: React.MouseEvent) => {
-    if (!containerRef.current) return { x: 0, y: 0 };
-    const rect = containerRef.current.getBoundingClientRect();
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-  };
-
-  // Start drag
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!imageURL) return;
-
-    const pos = getRelativePos(e);
-    dragStartRef.current = pos;
-    setDragging(true);
-
-    setSelection({
-      x: pos.x,
-      y: pos.y,
-      width: 0,
-      height: 0,
-      isActive: false,
-    });
-  };
-
-  // Dragging
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragging || !dragStartRef.current) return;
-
-    const start = dragStartRef.current;
-    const pos = getRelativePos(e);
-
-    const left = Math.min(start.x, pos.x);
-    const top = Math.min(start.y, pos.y);
-    const width = Math.abs(pos.x - start.x);
-    const height = Math.abs(pos.y - start.y);
-
-    setSelection({
-      x: left,
-      y: top,
-      width,
-      height,
-      isActive: width > 5 && height > 5,
-    });
-  };
-
-  const handleMouseUp = () => {
-    setDragging(false);
-    dragStartRef.current = null;
-  };
-
-  // Optional: remove white background from the cropped PNG
-  const removeWhiteBackground = (
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number
-  ) => {
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const data = imgData.data;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-
-      // Treat near-white pixels as background
-      if (r > 230 && g > 230 && b > 230) {
-        data[i + 3] = 0; // alpha = 0 (transparent)
-      }
-    }
-
-    ctx.putImageData(imgData, 0, 0);
-  };
-
-  // Create SVG from cropped canvas and download
-  const handleDownloadSvg = () => {
-    if (!imgRef.current || !canvasRef.current || !selection.isActive) return;
-
-    const img = imgRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const displayWidth = img.clientWidth;
-    const displayHeight = img.clientHeight;
-    if (!displayWidth || !displayHeight) return;
-
-    const scaleX = img.naturalWidth / displayWidth;
-    const scaleY = img.naturalHeight / displayHeight;
-
-    const sx = selection.x * scaleX;
-    const sy = selection.y * scaleY;
-    const sw = selection.width * scaleX;
-    const sh = selection.height * scaleY;
-
-    canvas.width = sw;
-    canvas.height = sh;
-
-    ctx.clearRect(0, 0, sw, sh);
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-
-    // Make background transparent if it's white-ish
-    removeWhiteBackground(ctx, sw, sh);
-
-    const pngDataUrl = canvas.toDataURL("image/png"); // data:image/png;base64,...
-
-    // Build SVG string that embeds the PNG as <image>
-    const svg = [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${sw}" height="${sh}" viewBox="0 0 ${sw} ${sh}">`,
-      `  <!-- Cropped image embedded as PNG -->`,
-      `  <image href="${pngDataUrl}" width="${sw}" height="${sh}" />`,
-      `</svg>`,
-    ].join("\n");
-
+  const handleDownload = () => {
+    const svg = buildSvgString(strokes);
     setSvgCode(svg);
 
-    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const blob = new Blob([svg], {
+      type: "image/svg+xml;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = "cropped-image.svg";
+    a.download = "drawing.svg";
     a.click();
 
     URL.revokeObjectURL(url);
   };
 
-  const canDownload = !!imageURL && selection.isActive;
-
   return (
     <div style={styles.wrapper}>
-      <h2 style={styles.title}>Crop Image → Export as SVG (with embedded PNG)</h2>
+      <h2>Download SVG in your path format</h2>
 
-      <div style={styles.controls}>
-        <input type="file" accept="image/*" onChange={handleUpload} />
+      <button style={styles.button} onClick={handleDownload}>
+        Download SVG
+      </button>
 
-        <button
-          type="button"
-          style={{
-            ...styles.button,
-            ...(canDownload ? {} : styles.buttonDisabled),
-          }}
-          disabled={!canDownload}
-          onClick={handleDownloadSvg}
-        >
-          Download SVG
-        </button>
-      </div>
+      <p style={styles.hint}>SVG code (developer-friendly):</p>
+      <textarea
+        style={styles.textarea}
+        readOnly
+        value={svgCode || "// Click 'Download SVG' to generate the code"}
+      />
 
-      <p style={styles.hint}>
-        Upload an image, then click and drag on the image to choose the crop area.
-      </p>
-
-      <div
-        ref={containerRef}
-        style={styles.imageContainer}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
-        {imageURL ? (
-          <>
-            <img
-              ref={imgRef}
-              src={imageURL}
-              alt="uploaded"
-              style={styles.image}
-              draggable={false}
-            />
-            {selection.isActive && (
-              <div
-                style={{
-                  ...styles.selectionBox,
-                  left: selection.x,
-                  top: selection.y,
-                  width: selection.width,
-                  height: selection.height,
-                }}
-              />
-            )}
-          </>
-        ) : (
-          <div style={styles.placeholder}>No image loaded yet.</div>
-        )}
-      </div>
-
-      {/* Hidden canvas used to produce the PNG inside the SVG */}
-      <canvas ref={canvasRef} style={{ display: "none" }} />
-
-      {/* Developer SVG Code Preview */}
-      <div style={styles.codeBlockWrapper}>
-        <h3 style={styles.codeTitle}>Developer SVG code</h3>
-        <textarea
-          style={styles.textarea}
-          readOnly
-          value={svgCode || "// SVG code will appear here after you crop & download."}
-        />
-      </div>
+      <p style={styles.hint}>Original JSON format (your data structure):</p>
+      <pre style={styles.pre}>
+        {JSON.stringify(strokes, null, 2)}
+      </pre>
     </div>
   );
 };
 
-export default ImageCropperSvgExport;
+export default DownloadSvgFromPaths;
 
-// -------- Styles --------
 const styles: Record<string, React.CSSProperties> = {
   wrapper: {
-    maxWidth: 900,
+    maxWidth: 800,
     margin: "20px auto",
-    padding: 16,
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+    fontFamily: "sans-serif",
   },
-  title: {
-    marginBottom: 12,
-  },
-  controls: {
-    display: "flex",
-    gap: 12,
-    alignItems: "center",
-    marginBottom: 8,
+  button: {
+    padding: "8px 16px",
+    background: "#2563eb",
+    border: "none",
+    borderRadius: 6,
+    color: "white",
+    cursor: "pointer",
+    marginBottom: 10,
   },
   hint: {
     fontSize: 12,
     color: "#555",
-    marginBottom: 10,
-  },
-  imageContainer: {
-    position: "relative",
-    border: "1px solid #ccc",
-    borderRadius: 8,
-    padding: 8,
-    minHeight: 300,
-    background: "#f7f7f7",
-    overflow: "hidden",
-    cursor: "crosshair",
-  },
-  image: {
-    maxWidth: "100%",
-    height: "auto",
-    display: "block",
-    userSelect: "none",
-  },
-  placeholder: {
-    fontSize: 14,
-    color: "#888",
-    textAlign: "center",
-    paddingTop: 120,
-  },
-  selectionBox: {
-    position: "absolute",
-    border: "2px dashed #0ea5e9",
-    backgroundColor: "rgba(14, 165, 233, 0.25)",
-    pointerEvents: "none",
-    boxSizing: "border-box",
-  },
-  button: {
-    padding: "8px 16px",
-    borderRadius: 6,
-    border: "none",
-    background: "#2563eb",
-    color: "#fff",
-    fontSize: 14,
-    cursor: "pointer",
-  },
-  buttonDisabled: {
-    background: "#9ca3af",
-    cursor: "not-allowed",
-  },
-  codeBlockWrapper: {
-    marginTop: 20,
-  },
-  codeTitle: {
-    fontSize: 14,
-    marginBottom: 6,
+    margin: "8px 0 4px",
   },
   textarea: {
     width: "100%",
-    minHeight: 180,
+    minHeight: 160,
     fontFamily: "monospace",
     fontSize: 12,
     padding: 8,
@@ -325,5 +113,13 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #ddd",
     resize: "vertical",
     background: "#f9fafb",
+  },
+  pre: {
+    padding: 8,
+    background: "#111827",
+    color: "#e5e7eb",
+    borderRadius: 6,
+    fontSize: 11,
+    overflowX: "auto",
   },
 };
