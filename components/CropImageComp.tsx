@@ -8,7 +8,7 @@ type Selection = {
   isActive: boolean;
 };
 
-const ImageCropper: React.FC = () => {
+const ImageCropperSvgExport: React.FC = () => {
   const [imageURL, setImageURL] = useState<string | null>(null);
   const [selection, setSelection] = useState<Selection>({
     x: 0,
@@ -17,27 +17,27 @@ const ImageCropper: React.FC = () => {
     height: 0,
     isActive: false,
   });
-  const [isDragging, setIsDragging] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [svgCode, setSvgCode] = useState<string>("");
 
-  const imgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // 1) Upload image
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload image
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const url = URL.createObjectURL(file);
-    setImageURL(url);
+    setImageURL(URL.createObjectURL(file));
     setSelection({ x: 0, y: 0, width: 0, height: 0, isActive: false });
+    setSvgCode("");
   };
 
-  // Helpers to convert mouse coords to container coords
-  const getRelativePosition = (e: React.MouseEvent) => {
+  // Convert mouse coords → container coords
+  const getRelativePos = (e: React.MouseEvent) => {
     if (!containerRef.current) return { x: 0, y: 0 };
-
     const rect = containerRef.current.getBoundingClientRect();
     return {
       x: e.clientX - rect.left,
@@ -45,61 +45,81 @@ const ImageCropper: React.FC = () => {
     };
   };
 
-  // 2) Start crop drag
+  // Start drag
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!imageURL) return;
 
-    const { x, y } = getRelativePosition(e);
-    dragStartRef.current = { x, y };
-    setIsDragging(true);
+    const pos = getRelativePos(e);
+    dragStartRef.current = pos;
+    setDragging(true);
+
     setSelection({
-      x,
-      y,
+      x: pos.x,
+      y: pos.y,
       width: 0,
       height: 0,
       isActive: false,
     });
   };
 
-  // 3) Update crop rect while dragging
+  // Dragging
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !dragStartRef.current) return;
+    if (!dragging || !dragStartRef.current) return;
 
-    const { x: startX, y: startY } = dragStartRef.current;
-    const { x: currentX, y: currentY } = getRelativePosition(e);
+    const start = dragStartRef.current;
+    const pos = getRelativePos(e);
 
-    const left = Math.min(startX, currentX);
-    const top = Math.min(startY, currentY);
-    const width = Math.abs(currentX - startX);
-    const height = Math.abs(currentY - startY);
+    const left = Math.min(start.x, pos.x);
+    const top = Math.min(start.y, pos.y);
+    const width = Math.abs(pos.x - start.x);
+    const height = Math.abs(pos.y - start.y);
 
     setSelection({
       x: left,
       y: top,
       width,
       height,
-      isActive: width > 5 && height > 5, // ignore tiny clicks
+      isActive: width > 5 && height > 5,
     });
   };
 
-  // 4) End drag
   const handleMouseUp = () => {
-    if (!isDragging) return;
-    setIsDragging(false);
+    setDragging(false);
     dragStartRef.current = null;
   };
 
-  // 5) Crop and download PNG
-  const handleDownload = () => {
-    if (!imgRef.current || !canvasRef.current) return;
-    if (!selection.isActive) return;
+  // Optional: remove white background from the cropped PNG
+  const removeWhiteBackground = (
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number
+  ) => {
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      // Treat near-white pixels as background
+      if (r > 230 && g > 230 && b > 230) {
+        data[i + 3] = 0; // alpha = 0 (transparent)
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  };
+
+  // Create SVG from cropped canvas and download
+  const handleDownloadSvg = () => {
+    if (!imgRef.current || !canvasRef.current || !selection.isActive) return;
 
     const img = imgRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Convert from displayed coords -> natural image coords
     const displayWidth = img.clientWidth;
     const displayHeight = img.clientHeight;
     if (!displayWidth || !displayHeight) return;
@@ -118,25 +138,42 @@ const ImageCropper: React.FC = () => {
     ctx.clearRect(0, 0, sw, sh);
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
 
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "cropped-image.png";
-      a.click();
-      URL.revokeObjectURL(url);
-    }, "image/png");
+    // Make background transparent if it's white-ish
+    removeWhiteBackground(ctx, sw, sh);
+
+    const pngDataUrl = canvas.toDataURL("image/png"); // data:image/png;base64,...
+
+    // Build SVG string that embeds the PNG as <image>
+    const svg = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${sw}" height="${sh}" viewBox="0 0 ${sw} ${sh}">`,
+      `  <!-- Cropped image embedded as PNG -->`,
+      `  <image href="${pngDataUrl}" width="${sw}" height="${sh}" />`,
+      `</svg>`,
+    ].join("\n");
+
+    setSvgCode(svg);
+
+    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cropped-image.svg";
+    a.click();
+
+    URL.revokeObjectURL(url);
   };
 
   const canDownload = !!imageURL && selection.isActive;
 
   return (
     <div style={styles.wrapper}>
-      <h2 style={styles.title}>Image Upload, Crop & Save as PNG</h2>
+      <h2 style={styles.title}>Crop Image → Export as SVG (with embedded PNG)</h2>
 
       <div style={styles.controls}>
-        <input type="file" accept="image/*" onChange={handleImageUpload} />
+        <input type="file" accept="image/*" onChange={handleUpload} />
+
         <button
           type="button"
           style={{
@@ -144,13 +181,15 @@ const ImageCropper: React.FC = () => {
             ...(canDownload ? {} : styles.buttonDisabled),
           }}
           disabled={!canDownload}
-          onClick={handleDownload}
+          onClick={handleDownloadSvg}
         >
-          Download PNG
+          Download SVG
         </button>
       </div>
 
-      <p style={styles.hint}>Upload an image, then click and drag to select an area.</p>
+      <p style={styles.hint}>
+        Upload an image, then click and drag on the image to choose the crop area.
+      </p>
 
       <div
         ref={containerRef}
@@ -169,7 +208,6 @@ const ImageCropper: React.FC = () => {
               style={styles.image}
               draggable={false}
             />
-
             {selection.isActive && (
               <div
                 style={{
@@ -187,18 +225,28 @@ const ImageCropper: React.FC = () => {
         )}
       </div>
 
-      {/* Hidden canvas used for the crop */}
+      {/* Hidden canvas used to produce the PNG inside the SVG */}
       <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      {/* Developer SVG Code Preview */}
+      <div style={styles.codeBlockWrapper}>
+        <h3 style={styles.codeTitle}>Developer SVG code</h3>
+        <textarea
+          style={styles.textarea}
+          readOnly
+          value={svgCode || "// SVG code will appear here after you crop & download."}
+        />
+      </div>
     </div>
   );
 };
 
-export default ImageCropper;
+export default ImageCropperSvgExport;
 
-// -------- styles ----------
+// -------- Styles --------
 const styles: Record<string, React.CSSProperties> = {
   wrapper: {
-    maxWidth: 800,
+    maxWidth: 900,
     margin: "20px auto",
     padding: 16,
     fontFamily:
@@ -259,5 +307,23 @@ const styles: Record<string, React.CSSProperties> = {
   buttonDisabled: {
     background: "#9ca3af",
     cursor: "not-allowed",
+  },
+  codeBlockWrapper: {
+    marginTop: 20,
+  },
+  codeTitle: {
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  textarea: {
+    width: "100%",
+    minHeight: 180,
+    fontFamily: "monospace",
+    fontSize: 12,
+    padding: 8,
+    borderRadius: 6,
+    border: "1px solid #ddd",
+    resize: "vertical",
+    background: "#f9fafb",
   },
 };
