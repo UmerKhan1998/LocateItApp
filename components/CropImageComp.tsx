@@ -21,8 +21,11 @@ const MobileShapePanel: React.FC = () => {
     height: 0,
     active: false,
   });
+  // crop that was actually applied to the mobile preview
+  const [appliedCrop, setAppliedCrop] = useState<Selection | null>(null);
 
   const [dragging, setDragging] = useState(false);
+  const [savePayload, setSavePayload] = useState<any>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -36,7 +39,9 @@ const MobileShapePanel: React.FC = () => {
     const url = URL.createObjectURL(file);
     setImageUrl(url);
     setSelection({ x: 0, y: 0, width: 0, height: 0, active: false });
+    setAppliedCrop(null);
     setCroppedUrl(null);
+    setSavePayload(null);
   };
 
   // ---- Crop selection helpers ----
@@ -96,9 +101,17 @@ const MobileShapePanel: React.FC = () => {
     if (!displayW || !displayH) return;
 
     // if no active selection, use whole image
-    let sel = selection;
+    let sel: Selection;
     if (!selection.active) {
-      sel = { x: 0, y: 0, width: displayW, height: displayH, active: true };
+      sel = {
+        x: 0,
+        y: 0,
+        width: displayW,
+        height: displayH,
+        active: true,
+      };
+    } else {
+      sel = selection;
     }
 
     const scaleX = img.naturalWidth / displayW;
@@ -117,9 +130,33 @@ const MobileShapePanel: React.FC = () => {
 
     const dataUrl = canvas.toDataURL("image/png");
     setCroppedUrl(dataUrl);
+    setAppliedCrop(sel);
+    setSavePayload(null); // reset old payload
   };
 
-  // ---- Direction CSS class ----
+  // ---- SAVE: create payload ----
+  const handleSave = () => {
+    if (!croppedUrl || !appliedCrop) return;
+
+    const payload = {
+      direction,
+      originalImage: imageUrl,
+      croppedImage: croppedUrl,
+      cropArea: {
+        x: appliedCrop.x,
+        y: appliedCrop.y,
+        width: appliedCrop.width,
+        height: appliedCrop.height,
+      },
+    };
+
+    setSavePayload(payload);
+    console.log("SAVE PAYLOAD:", payload);
+    // here you can POST to API:
+    // fetch("/api/save-shape", { method: "POST", body: JSON.stringify(payload) })
+  };
+
+  // ---- Direction placement inside mobile ----
   const mobileImagePlacement: React.CSSProperties = (() => {
     const base: React.CSSProperties = {
       maxWidth: "70%",
@@ -186,7 +223,7 @@ const MobileShapePanel: React.FC = () => {
 
         <p style={styles.helpText}>
           1. Upload image. 2. Drag on the image to crop (optional). 3. Choose
-          direction. 4. Click &quot;Show in Mobile&quot;.
+          direction. 4. Click &quot;Show in Mobile&quot;. 5. Click &quot;Save&quot;.
         </p>
 
         <div
@@ -237,8 +274,27 @@ const MobileShapePanel: React.FC = () => {
           Show in Mobile
         </button>
 
+        <button
+          style={{
+            ...styles.button,
+            marginTop: 8,
+            background: "#10B981",
+            ...(croppedUrl ? {} : styles.buttonDisabled),
+          }}
+          disabled={!croppedUrl}
+          onClick={handleSave}
+        >
+          Save
+        </button>
+
         {/* hidden canvas */}
         <canvas ref={canvasRef} style={{ display: "none" }} />
+
+        {savePayload && (
+          <pre style={styles.jsonBox}>
+            {JSON.stringify(savePayload, null, 2)}
+          </pre>
+        )}
       </div>
 
       {/* RIGHT: MOBILE MOCKUP */}
@@ -250,7 +306,7 @@ const MobileShapePanel: React.FC = () => {
               <span>COMPLETE THE SHAPE</span>
             </div>
             <div style={styles.mobileScreen}>
-              {/* You could draw your base shape here as SVG or image */}
+              {/* Here you could draw the base shape, using SVG, etc. */}
               <div style={styles.baseShapePlaceholder}>Base Shape</div>
 
               {croppedUrl && (
@@ -359,8 +415,19 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#4b5563",
     cursor: "not-allowed",
   },
+  jsonBox: {
+    background: "#111827",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    fontSize: 11,
+    color: "#d1d5db",
+    maxHeight: 200,
+    overflowY: "auto",
+    border: "1px solid #374151",
+  },
 
-  // mobile mock
+  // mobile mockup
   mobileShell: {
     width: 280,
     height: 540,
@@ -383,6 +450,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 24,
     padding: 12,
     boxSizing: "border-box",
+    height: "100%",
   },
   mobileTopBar: {
     background: "#4c1d95",
