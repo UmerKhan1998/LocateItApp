@@ -1,153 +1,193 @@
 import React, { useRef, useState } from "react";
 
+type Selection = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isActive: boolean;
+};
+
 const ImageCropper: React.FC = () => {
+  const [imageURL, setImageURL] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Selection>({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    isActive: false,
+  });
+  const [isDragging, setIsDragging] = useState(false);
+
   const imgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  const [imageURL, setImageURL] = useState<string | null>(null);
-  const [selection, setSelection] = useState({
-    startX: 0,
-    startY: 0,
-    left: 0,
-    top: 0,
-    width: 0,
-    height: 0,
-    dragging: false,
-  });
-
+  // 1) Upload image
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setImageURL(URL.createObjectURL(file));
-    setSelection({ ...selection, width: 0, height: 0 });
+    const url = URL.createObjectURL(file);
+    setImageURL(url);
+    setSelection({ x: 0, y: 0, width: 0, height: 0, isActive: false });
   };
 
-  const startDrag = (e: React.MouseEvent) => {
-    if (!containerRef.current) return;
+  // Helpers to convert mouse coords to container coords
+  const getRelativePosition = (e: React.MouseEvent) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
 
     const rect = containerRef.current.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
+
+  // 2) Start crop drag
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!imageURL) return;
+
+    const { x, y } = getRelativePosition(e);
+    dragStartRef.current = { x, y };
+    setIsDragging(true);
     setSelection({
-      ...selection,
-      startX: e.clientX - rect.left,
-      startY: e.clientY - rect.top,
-      dragging: true,
+      x,
+      y,
       width: 0,
       height: 0,
+      isActive: false,
     });
   };
 
-  const onDrag = (e: React.MouseEvent) => {
-    if (!selection.dragging || !containerRef.current) return;
+  // 3) Update crop rect while dragging
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !dragStartRef.current) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
+    const { x: startX, y: startY } = dragStartRef.current;
+    const { x: currentX, y: currentY } = getRelativePosition(e);
 
-    const left = Math.min(selection.startX, currentX);
-    const top = Math.min(selection.startY, currentY);
-    const width = Math.abs(currentX - selection.startX);
-    const height = Math.abs(currentY - selection.startY);
+    const left = Math.min(startX, currentX);
+    const top = Math.min(startY, currentY);
+    const width = Math.abs(currentX - startX);
+    const height = Math.abs(currentY - startY);
 
     setSelection({
-      ...selection,
-      left,
-      top,
+      x: left,
+      y: top,
       width,
       height,
+      isActive: width > 5 && height > 5, // ignore tiny clicks
     });
   };
 
-  const endDrag = () => {
-    if (!selection.dragging) return;
-    setSelection({ ...selection, dragging: false });
+  // 4) End drag
+  const handleMouseUp = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    dragStartRef.current = null;
   };
 
-  const downloadPNG = () => {
+  // 5) Crop and download PNG
+  const handleDownload = () => {
     if (!imgRef.current || !canvasRef.current) return;
-    if (selection.width < 5 || selection.height < 5) return;
+    if (!selection.isActive) return;
 
     const img = imgRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // scaling ratios
-    const scaleX = img.naturalWidth / img.clientWidth;
-    const scaleY = img.naturalHeight / img.clientHeight;
+    // Convert from displayed coords -> natural image coords
+    const displayWidth = img.clientWidth;
+    const displayHeight = img.clientHeight;
+    if (!displayWidth || !displayHeight) return;
 
-    const sx = selection.left * scaleX;
-    const sy = selection.top * scaleY;
+    const scaleX = img.naturalWidth / displayWidth;
+    const scaleY = img.naturalHeight / displayHeight;
+
+    const sx = selection.x * scaleX;
+    const sy = selection.y * scaleY;
     const sw = selection.width * scaleX;
     const sh = selection.height * scaleY;
 
     canvas.width = sw;
     canvas.height = sh;
 
+    ctx.clearRect(0, 0, sw, sh);
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
 
     canvas.toBlob((blob) => {
       if (!blob) return;
-
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "cropped.png";
+      a.download = "cropped-image.png";
       a.click();
       URL.revokeObjectURL(url);
-    });
+    }, "image/png");
   };
+
+  const canDownload = !!imageURL && selection.isActive;
 
   return (
     <div style={styles.wrapper}>
-      <h2>Image Upload, Crop & Save as PNG</h2>
+      <h2 style={styles.title}>Image Upload, Crop & Save as PNG</h2>
 
-      {/* Upload Button */}
-      <input type="file" accept="image/*" onChange={handleImageUpload} />
+      <div style={styles.controls}>
+        <input type="file" accept="image/*" onChange={handleImageUpload} />
+        <button
+          type="button"
+          style={{
+            ...styles.button,
+            ...(canDownload ? {} : styles.buttonDisabled),
+          }}
+          disabled={!canDownload}
+          onClick={handleDownload}
+        >
+          Download PNG
+        </button>
+      </div>
+
+      <p style={styles.hint}>Upload an image, then click and drag to select an area.</p>
 
       <div
-        style={styles.imageBox}
         ref={containerRef}
-        onMouseDown={startDrag}
-        onMouseMove={onDrag}
-        onMouseUp={endDrag}
+        style={styles.imageContainer}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
-        {imageURL && (
+        {imageURL ? (
           <>
             <img
               ref={imgRef}
               src={imageURL}
               alt="uploaded"
-              style={{ maxWidth: "100%", userSelect: "none" }}
+              style={styles.image}
               draggable={false}
             />
 
-            {/* Selection Box */}
-            {selection.width > 0 && selection.height > 0 && (
+            {selection.isActive && (
               <div
                 style={{
-                  ...styles.selectBox,
-                  left: selection.left,
-                  top: selection.top,
+                  ...styles.selectionBox,
+                  left: selection.x,
+                  top: selection.y,
                   width: selection.width,
                   height: selection.height,
                 }}
               />
             )}
           </>
+        ) : (
+          <div style={styles.placeholder}>No image loaded yet.</div>
         )}
       </div>
 
-      {/* Download Button */}
-      <button
-        style={styles.button}
-        disabled={selection.width === 0}
-        onClick={downloadPNG}
-      >
-        Download PNG
-      </button>
-
+      {/* Hidden canvas used for the crop */}
       <canvas ref={canvasRef} style={{ display: "none" }} />
     </div>
   );
@@ -155,36 +195,69 @@ const ImageCropper: React.FC = () => {
 
 export default ImageCropper;
 
-// ---- Inline Styles ----
+// -------- styles ----------
 const styles: Record<string, React.CSSProperties> = {
   wrapper: {
+    maxWidth: 800,
+    margin: "20px auto",
+    padding: 16,
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+  },
+  title: {
+    marginBottom: 12,
+  },
+  controls: {
     display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-    width: "600px",
-    margin: "0 auto",
+    gap: 12,
+    alignItems: "center",
+    marginBottom: 8,
   },
-  imageBox: {
+  hint: {
+    fontSize: 12,
+    color: "#555",
+    marginBottom: 10,
+  },
+  imageContainer: {
     position: "relative",
-    border: "2px solid #ddd",
-    padding: "6px",
-    borderRadius: "8px",
+    border: "1px solid #ccc",
+    borderRadius: 8,
+    padding: 8,
+    minHeight: 300,
     background: "#f7f7f7",
-    minHeight: "300px",
+    overflow: "hidden",
+    cursor: "crosshair",
   },
-  selectBox: {
+  image: {
+    maxWidth: "100%",
+    height: "auto",
+    display: "block",
+    userSelect: "none",
+  },
+  placeholder: {
+    fontSize: 14,
+    color: "#888",
+    textAlign: "center",
+    paddingTop: 120,
+  },
+  selectionBox: {
     position: "absolute",
-    border: "2px dashed #1ea7fd",
-    background: "rgba(30, 167, 253, 0.2)",
+    border: "2px dashed #0ea5e9",
+    backgroundColor: "rgba(14, 165, 233, 0.25)",
     pointerEvents: "none",
+    boxSizing: "border-box",
   },
   button: {
-    padding: "10px 18px",
-    background: "#2563eb",
+    padding: "8px 16px",
+    borderRadius: 6,
     border: "none",
+    background: "#2563eb",
     color: "#fff",
-    borderRadius: "6px",
+    fontSize: 14,
     cursor: "pointer",
-    fontSize: "14px",
+  },
+  buttonDisabled: {
+    background: "#9ca3af",
+    cursor: "not-allowed",
   },
 };
