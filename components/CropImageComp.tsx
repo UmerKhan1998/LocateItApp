@@ -8,7 +8,7 @@ type Selection = {
   isActive: boolean;
 };
 
-const ImageCropper: React.FC = () => {
+const ImageCropperRemoveBG: React.FC = () => {
   const [imageURL, setImageURL] = useState<string | null>(null);
   const [selection, setSelection] = useState<Selection>({
     x: 0,
@@ -17,27 +17,24 @@ const ImageCropper: React.FC = () => {
     height: 0,
     isActive: false,
   });
-  const [isDragging, setIsDragging] = useState(false);
 
-  const imgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
 
-  // 1) Upload image
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload image
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const url = URL.createObjectURL(file);
-    setImageURL(url);
+    setImageURL(URL.createObjectURL(file));
     setSelection({ x: 0, y: 0, width: 0, height: 0, isActive: false });
   };
 
-  // Helpers to convert mouse coords to container coords
-  const getRelativePosition = (e: React.MouseEvent) => {
+  // Convert mouse coords → container coords
+  const getPos = (e: React.MouseEvent) => {
     if (!containerRef.current) return { x: 0, y: 0 };
-
     const rect = containerRef.current.getBoundingClientRect();
     return {
       x: e.clientX - rect.left,
@@ -45,67 +42,78 @@ const ImageCropper: React.FC = () => {
     };
   };
 
-  // 2) Start crop drag
-  const handleMouseDown = (e: React.MouseEvent) => {
+  // Start drag
+  const handleDown = (e: React.MouseEvent) => {
     if (!imageURL) return;
+    const pos = getPos(e);
+    dragStartRef.current = pos;
+    setDragging(true);
 
-    const { x, y } = getRelativePosition(e);
-    dragStartRef.current = { x, y };
-    setIsDragging(true);
     setSelection({
-      x,
-      y,
+      x: pos.x,
+      y: pos.y,
       width: 0,
       height: 0,
       isActive: false,
     });
   };
 
-  // 3) Update crop rect while dragging
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !dragStartRef.current) return;
+  // Dragging
+  const handleMove = (e: React.MouseEvent) => {
+    if (!dragging || !dragStartRef.current) return;
 
-    const { x: startX, y: startY } = dragStartRef.current;
-    const { x: currentX, y: currentY } = getRelativePosition(e);
+    const start = dragStartRef.current;
+    const current = getPos(e);
 
-    const left = Math.min(startX, currentX);
-    const top = Math.min(startY, currentY);
-    const width = Math.abs(currentX - startX);
-    const height = Math.abs(currentY - startY);
+    const left = Math.min(start.x, current.x);
+    const top = Math.min(start.y, current.y);
+    const width = Math.abs(current.x - start.x);
+    const height = Math.abs(current.y - start.y);
 
     setSelection({
       x: left,
       y: top,
       width,
       height,
-      isActive: width > 5 && height > 5, // ignore tiny clicks
+      isActive: width > 5 && height > 5,
     });
   };
 
-  // 4) End drag
-  const handleMouseUp = () => {
-    if (!isDragging) return;
-    setIsDragging(false);
+  const handleUp = () => {
+    setDragging(false);
     dragStartRef.current = null;
   };
 
-  // 5) Crop and download PNG
+  // ⭐ Background removal (white → transparent)
+  const removeWhiteBackground = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      // Threshold for white/light backgrounds
+      if (r > 230 && g > 230 && b > 230) {
+        data[i + 3] = 0; // alpha=0 (transparent)
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  };
+
+  // Download PNG
   const handleDownload = () => {
-    if (!imgRef.current || !canvasRef.current) return;
-    if (!selection.isActive) return;
+    if (!imgRef.current || !canvasRef.current || !selection.isActive) return;
 
     const img = imgRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Convert from displayed coords -> natural image coords
-    const displayWidth = img.clientWidth;
-    const displayHeight = img.clientHeight;
-    if (!displayWidth || !displayHeight) return;
-
-    const scaleX = img.naturalWidth / displayWidth;
-    const scaleY = img.naturalHeight / displayHeight;
+    const scaleX = img.naturalWidth / img.clientWidth;
+    const scaleY = img.naturalHeight / img.clientHeight;
 
     const sx = selection.x * scaleX;
     const sy = selection.y * scaleY;
@@ -115,65 +123,55 @@ const ImageCropper: React.FC = () => {
     canvas.width = sw;
     canvas.height = sh;
 
-    ctx.clearRect(0, 0, sw, sh);
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    // ⭐ Remove background
+    removeWhiteBackground(ctx, sw, sh);
 
     canvas.toBlob((blob) => {
       if (!blob) return;
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "cropped-image.png";
+      a.download = "cropped-transparent.png";
       a.click();
-      URL.revokeObjectURL(url);
-    }, "image/png");
+    });
   };
-
-  const canDownload = !!imageURL && selection.isActive;
 
   return (
     <div style={styles.wrapper}>
-      <h2 style={styles.title}>Image Upload, Crop & Save as PNG</h2>
+      <h2 style={styles.title}>Crop + Remove Background + Save as PNG</h2>
 
-      <div style={styles.controls}>
-        <input type="file" accept="image/*" onChange={handleImageUpload} />
-        <button
-          type="button"
-          style={{
-            ...styles.button,
-            ...(canDownload ? {} : styles.buttonDisabled),
-          }}
-          disabled={!canDownload}
-          onClick={handleDownload}
-        >
-          Download PNG
-        </button>
-      </div>
+      <input type="file" accept="image/*" onChange={handleUpload} />
 
-      <p style={styles.hint}>Upload an image, then click and drag to select an area.</p>
+      <button
+        style={{
+          ...styles.button,
+          ...(selection.isActive ? {} : styles.disabled),
+        }}
+        disabled={!selection.isActive}
+        onClick={handleDownload}
+      >
+        Download PNG (Background Removed)
+      </button>
 
       <div
         ref={containerRef}
-        style={styles.imageContainer}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        style={styles.container}
+        onMouseDown={handleDown}
+        onMouseMove={handleMove}
+        onMouseUp={handleUp}
+        onMouseLeave={handleUp}
       >
         {imageURL ? (
           <>
-            <img
-              ref={imgRef}
-              src={imageURL}
-              alt="uploaded"
-              style={styles.image}
-              draggable={false}
-            />
+            <img ref={imgRef} src={imageURL} style={styles.image} alt="" />
 
             {selection.isActive && (
               <div
                 style={{
-                  ...styles.selectionBox,
+                  ...styles.selectBox,
                   left: selection.x,
                   top: selection.y,
                   width: selection.width,
@@ -183,81 +181,60 @@ const ImageCropper: React.FC = () => {
             )}
           </>
         ) : (
-          <div style={styles.placeholder}>No image loaded yet.</div>
+          <div style={styles.placeholder}>Upload an image to begin</div>
         )}
       </div>
 
-      {/* Hidden canvas used for the crop */}
       <canvas ref={canvasRef} style={{ display: "none" }} />
     </div>
   );
 };
 
-export default ImageCropper;
+export default ImageCropperRemoveBG;
 
-// -------- styles ----------
+// ------------------ STYLES ------------------
 const styles: Record<string, React.CSSProperties> = {
   wrapper: {
-    maxWidth: 800,
+    width: "600px",
     margin: "20px auto",
-    padding: 16,
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+    fontFamily: "sans-serif",
   },
   title: {
-    marginBottom: 12,
+    marginBottom: "10px",
   },
-  controls: {
-    display: "flex",
-    gap: 12,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  hint: {
-    fontSize: 12,
-    color: "#555",
-    marginBottom: 10,
-  },
-  imageContainer: {
+  container: {
+    marginTop: "10px",
     position: "relative",
     border: "1px solid #ccc",
-    borderRadius: 8,
-    padding: 8,
-    minHeight: 300,
-    background: "#f7f7f7",
-    overflow: "hidden",
-    cursor: "crosshair",
+    minHeight: "300px",
+    background: "#f9f9f9",
   },
   image: {
     maxWidth: "100%",
-    height: "auto",
-    display: "block",
     userSelect: "none",
   },
-  placeholder: {
-    fontSize: 14,
-    color: "#888",
-    textAlign: "center",
-    paddingTop: 120,
-  },
-  selectionBox: {
+  selectBox: {
     position: "absolute",
-    border: "2px dashed #0ea5e9",
-    backgroundColor: "rgba(14, 165, 233, 0.25)",
+    border: "2px dashed #00aaff",
+    backgroundColor: "rgba(0, 170, 255, 0.2)",
     pointerEvents: "none",
-    boxSizing: "border-box",
   },
   button: {
     padding: "8px 16px",
-    borderRadius: 6,
-    border: "none",
+    marginTop: "10px",
     background: "#2563eb",
-    color: "#fff",
-    fontSize: 14,
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
     cursor: "pointer",
   },
-  buttonDisabled: {
+  disabled: {
     background: "#9ca3af",
     cursor: "not-allowed",
+  },
+  placeholder: {
+    padding: "120px 0",
+    textAlign: "center",
+    color: "#777",
   },
 };
