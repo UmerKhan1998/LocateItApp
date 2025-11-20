@@ -1,125 +1,416 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 
-type Stroke = {
-  color: string;
-  path: string;
-  strokeWidth: number;
+type Direction = "top" | "right" | "bottom" | "left";
+
+type Selection = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  active: boolean;
 };
 
-// Example: your path data
-const exampleStrokes: Stroke[] = [
-  {
-    color: "black",
-    path: "M166.5,82 L168.445068359375,82.5 L171.94305419921875,85.94305419921875 L174.44677734375,88.44677734375 L176.94491577148438,90.94491577148438 L182.44293212890625,96.94293212890625 L186.88876342773438,102.38876342773438 L192.81520080566406,108.315185546875 L194.88729858398438,111.33096313476562 L200.83502197265625,116.3900146484375 L210.34141540527344,126.34140014648438 L221.77874755859375,136.83404541015625 L227.8331298828125,141.38876342773438 L231.94715881347656,145.94717407226562 L232.75,147.75 L233.71817016601562,148.21817016601562 L234,149.43936157226562 L233.5,155.39120483398438 L233,157.88482666015625 L230.55535888671875,169.27853393554688 L229,182.77914428710938 L225.5554656982422,196.27813720703125 L223.55712890625,204.771484375 L222,214.82382202148438 L221.5,218.97296142578125 L221,220.94369506835938 L221,222.21875 L221,222.71572875976562 L221,223.5 L221,224.716796875 L221,226.44595336914062 L221,231.3897705078125 L221,237.39093017578125 L221,241.89071655273438 L220.5,246.9462890625 L220.5,251.44189453125 L220.5,252.44491577148438 L220.5,254.7244873046875 L220.5,255 L220,255.5 L218.5550994873047,256 L213.669921875,258.943359375 L201.21922302246094,264.890380859375 L185.26632690429688,271.3934631347656 L179.16627502441406,273.944580078125 L172.60813903808594,277.4459228515625 L171.051025390625,278 L169.28073120117188,279.5 L168.7777557373047,280.22222900390625 L166.05421447753906,286.8916015625 L164.0549774169922,292.3350830078125 L160.0515899658203,300.84521484375 L156.06069946289062,307.87860107421875 L152.55804443359375,312.94195556640625 L150.75,315.5 L149.75,317 L149.5,317.5 L149,318.71697998046875 L149,320.4407958984375 L148,324.8868408203125 L148,333.31964111328125 L147.5,340.88671875 L147.5,347.83123779296875 L147.5,349.89306640625 L147.5,354.88201904296875 L148,357.94287109375 L148,359.21868896484375 L148,359.7198486328125 L148,360",
-    strokeWidth: 5,
-  },
-];
+const MobileShapePanel: React.FC = () => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [croppedUrl, setCroppedUrl] = useState<string | null>(null);
+  const [direction, setDirection] = useState<Direction>("left");
+  const [selection, setSelection] = useState<Selection>({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    active: false,
+  });
 
-const DownloadSvgFromPaths: React.FC = () => {
-  const [svgCode, setSvgCode] = useState<string>("");
+  const [dragging, setDragging] = useState(false);
 
-  // You can pass your own strokes instead of exampleStrokes
-  const strokes: Stroke[] = exampleStrokes;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Adjust these to your drawing's bounds
-  const svgWidth = 400;
-  const svgHeight = 400;
-
-  const buildSvgString = (paths: Stroke[]): string => {
-    const pathsMarkup = paths
-      .map(
-        (s) =>
-          `<path d="${s.path}" stroke="${s.color}" stroke-width="${s.strokeWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round" />`
-      )
-      .join("\n  ");
-
-    const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">
-  ${pathsMarkup}
-</svg>`;
-
-    return svg;
+  // ---- Upload ----
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setImageUrl(url);
+    setSelection({ x: 0, y: 0, width: 0, height: 0, active: false });
+    setCroppedUrl(null);
   };
 
-  const handleDownload = () => {
-    const svg = buildSvgString(strokes);
-    setSvgCode(svg);
+  // ---- Crop selection helpers ----
+  const getRelativePos = (e: React.MouseEvent) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
+    const rect = containerRef.current.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
 
-    const blob = new Blob([svg], {
-      type: "image/svg+xml;charset=utf-8",
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!imageUrl) return;
+    const pos = getRelativePos(e);
+    dragStartRef.current = pos;
+    setDragging(true);
+    setSelection({ x: pos.x, y: pos.y, width: 0, height: 0, active: false });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragging || !dragStartRef.current) return;
+
+    const start = dragStartRef.current;
+    const pos = getRelativePos(e);
+
+    const left = Math.min(start.x, pos.x);
+    const top = Math.min(start.y, pos.y);
+    const width = Math.abs(pos.x - start.x);
+    const height = Math.abs(pos.y - start.y);
+
+    setSelection({
+      x: left,
+      y: top,
+      width,
+      height,
+      active: width > 5 && height > 5,
     });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "drawing.svg";
-    a.click();
-
-    URL.revokeObjectURL(url);
   };
+
+  const handleMouseUp = () => {
+    setDragging(false);
+    dragStartRef.current = null;
+  };
+
+  // ---- Submit: crop & show inside phone ----
+  const handleApplyToMobile = () => {
+    if (!imgRef.current || !canvasRef.current || !imageUrl) return;
+
+    const img = imgRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const displayW = img.clientWidth;
+    const displayH = img.clientHeight;
+    if (!displayW || !displayH) return;
+
+    // if no active selection, use whole image
+    let sel = selection;
+    if (!selection.active) {
+      sel = { x: 0, y: 0, width: displayW, height: displayH, active: true };
+    }
+
+    const scaleX = img.naturalWidth / displayW;
+    const scaleY = img.naturalHeight / displayH;
+
+    const sx = sel.x * scaleX;
+    const sy = sel.y * scaleY;
+    const sw = sel.width * scaleX;
+    const sh = sel.height * scaleY;
+
+    canvas.width = sw;
+    canvas.height = sh;
+
+    ctx.clearRect(0, 0, sw, sh);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    const dataUrl = canvas.toDataURL("image/png");
+    setCroppedUrl(dataUrl);
+  };
+
+  // ---- Direction CSS class ----
+  const mobileImagePlacement: React.CSSProperties = (() => {
+    const base: React.CSSProperties = {
+      maxWidth: "70%",
+      maxHeight: "70%",
+      position: "absolute",
+    };
+    switch (direction) {
+      case "top":
+        return { ...base, top: 12, left: "50%", transform: "translateX(-50%)" };
+      case "bottom":
+        return {
+          ...base,
+          bottom: 12,
+          left: "50%",
+          transform: "translateX(-50%)",
+        };
+      case "right":
+        return {
+          ...base,
+          right: 12,
+          top: "50%",
+          transform: "translateY(-50%)",
+        };
+      case "left":
+      default:
+        return {
+          ...base,
+          left: 12,
+          top: "50%",
+          transform: "translateY(-50%)",
+        };
+    }
+  })();
+
+  const canApply = !!imageUrl;
 
   return (
-    <div style={styles.wrapper}>
-      <h2>Download SVG in your path format</h2>
+    <div style={styles.page}>
+      {/* LEFT PANEL */}
+      <div style={styles.leftPanel}>
+        <h2 style={{ marginBottom: 8 }}>Panel</h2>
 
-      <button style={styles.button} onClick={handleDownload}>
-        Download SVG
-      </button>
+        <label style={styles.label}>
+          Upload Image
+          <input type="file" accept="image/*" onChange={handleUpload} />
+        </label>
 
-      <p style={styles.hint}>SVG code (developer-friendly):</p>
-      <textarea
-        style={styles.textarea}
-        readOnly
-        value={svgCode || "// Click 'Download SVG' to generate the code"}
-      />
+        <div style={{ marginTop: 12 }}>
+          <div style={styles.label}>Direction</div>
+          <div style={styles.directionRow}>
+            {(["top", "right", "bottom", "left"] as Direction[]).map((d) => (
+              <label key={d} style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  value={d}
+                  checked={direction === d}
+                  onChange={() => setDirection(d)}
+                />
+                {d.toUpperCase()}
+              </label>
+            ))}
+          </div>
+        </div>
 
-      <p style={styles.hint}>Original JSON format (your data structure):</p>
-      <pre style={styles.pre}>
-        {JSON.stringify(strokes, null, 2)}
-      </pre>
+        <p style={styles.helpText}>
+          1. Upload image. 2. Drag on the image to crop (optional). 3. Choose
+          direction. 4. Click &quot;Show in Mobile&quot;.
+        </p>
+
+        <div
+          ref={containerRef}
+          style={styles.cropBox}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
+          {imageUrl ? (
+            <>
+              <img
+                ref={imgRef}
+                src={imageUrl}
+                alt="to crop"
+                style={styles.cropImage}
+                draggable={false}
+              />
+              {selection.active && (
+                <div
+                  style={{
+                    ...styles.selectionBox,
+                    left: selection.x,
+                    top: selection.y,
+                    width: selection.width,
+                    height: selection.height,
+                  }}
+                />
+              )}
+            </>
+          ) : (
+            <div style={styles.cropPlaceholder}>
+              Upload an image to start cropping
+            </div>
+          )}
+        </div>
+
+        <button
+          style={{
+            ...styles.button,
+            ...(canApply ? {} : styles.buttonDisabled),
+            marginTop: 12,
+          }}
+          disabled={!canApply}
+          onClick={handleApplyToMobile}
+        >
+          Show in Mobile
+        </button>
+
+        {/* hidden canvas */}
+        <canvas ref={canvasRef} style={{ display: "none" }} />
+      </div>
+
+      {/* RIGHT: MOBILE MOCKUP */}
+      <div style={styles.rightPanel}>
+        <div style={styles.mobileShell}>
+          <div style={styles.mobileHeader}>Mirror The Shape</div>
+          <div style={styles.mobileInner}>
+            <div style={styles.mobileTopBar}>
+              <span>COMPLETE THE SHAPE</span>
+            </div>
+            <div style={styles.mobileScreen}>
+              {/* You could draw your base shape here as SVG or image */}
+              <div style={styles.baseShapePlaceholder}>Base Shape</div>
+
+              {croppedUrl && (
+                <img
+                  src={croppedUrl}
+                  alt="cropped"
+                  style={mobileImagePlacement}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default DownloadSvgFromPaths;
+export default MobileShapePanel;
 
+// --------- styles ----------
 const styles: Record<string, React.CSSProperties> = {
-  wrapper: {
-    maxWidth: 800,
-    margin: "20px auto",
-    fontFamily: "sans-serif",
+  page: {
+    display: "flex",
+    gap: 24,
+    padding: 20,
+    background: "#111827",
+    minHeight: "100vh",
+    boxSizing: "border-box",
+    color: "#f9fafb",
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+  },
+  leftPanel: {
+    flex: 1,
+    background: "#1f2937",
+    borderRadius: 16,
+    padding: 16,
+    boxShadow: "0 8px 20px rgba(0,0,0,0.35)",
+  },
+  rightPanel: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: {
+    fontSize: 13,
+    marginBottom: 4,
+    display: "block",
+  },
+  directionRow: {
+    display: "flex",
+    gap: 8,
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  radioLabel: {
+    fontSize: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+  },
+  helpText: {
+    fontSize: 12,
+    color: "#9ca3af",
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  cropBox: {
+    marginTop: 8,
+    borderRadius: 12,
+    border: "1px dashed #4b5563",
+    background: "#030712",
+    minHeight: 260,
+    position: "relative",
+    overflow: "hidden",
+    cursor: "crosshair",
+  },
+  cropImage: {
+    maxWidth: "100%",
+    display: "block",
+    userSelect: "none",
+  },
+  cropPlaceholder: {
+    color: "#6b7280",
+    fontSize: 13,
+    textAlign: "center",
+    paddingTop: 80,
+  },
+  selectionBox: {
+    position: "absolute",
+    border: "2px dashed #38bdf8",
+    backgroundColor: "rgba(56, 189, 248, 0.2)",
+    pointerEvents: "none",
   },
   button: {
     padding: "8px 16px",
-    background: "#2563eb",
+    borderRadius: 999,
     border: "none",
-    borderRadius: 6,
+    background: "#2563eb",
     color: "white",
+    fontSize: 13,
     cursor: "pointer",
-    marginBottom: 10,
   },
-  hint: {
-    fontSize: 12,
-    color: "#555",
-    margin: "8px 0 4px",
+  buttonDisabled: {
+    background: "#4b5563",
+    cursor: "not-allowed",
   },
-  textarea: {
-    width: "100%",
-    minHeight: 160,
-    fontFamily: "monospace",
-    fontSize: 12,
-    padding: 8,
-    borderRadius: 6,
-    border: "1px solid #ddd",
-    resize: "vertical",
-    background: "#f9fafb",
-  },
-  pre: {
-    padding: 8,
+
+  // mobile mock
+  mobileShell: {
+    width: 280,
+    height: 540,
+    borderRadius: 32,
     background: "#111827",
+    padding: 10,
+    boxShadow: "0 12px 30px rgba(0,0,0,0.7)",
+    border: "3px solid #4b5563",
+    boxSizing: "border-box",
+  },
+  mobileHeader: {
+    textAlign: "center",
     color: "#e5e7eb",
-    borderRadius: 6,
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  mobileInner: {
+    flex: 1,
+    background: "linear-gradient(#93c5fd, #1d4ed8)",
+    borderRadius: 24,
+    padding: 12,
+    boxSizing: "border-box",
+  },
+  mobileTopBar: {
+    background: "#4c1d95",
+    color: "white",
+    borderRadius: 999,
+    padding: "4px 8px",
     fontSize: 11,
-    overflowX: "auto",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  mobileScreen: {
+    marginTop: 6,
+    background: "#3b0764",
+    borderRadius: 24,
+    padding: 10,
+    boxSizing: "border-box",
+    height: 420,
+    position: "relative",
+  },
+  baseShapePlaceholder: {
+    background: "white",
+    borderRadius: 16,
+    width: "100%",
+    height: "100%",
+    fontSize: 11,
+    color: "#9ca3af",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
 };
