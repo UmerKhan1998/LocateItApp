@@ -152,8 +152,6 @@ const MobileShapePanel: React.FC = () => {
 
     setSavePayload(payload);
     console.log("SAVE PAYLOAD:", payload);
-    // here you can POST to API:
-    // fetch("/api/save-shape", { method: "POST", body: JSON.stringify(payload) })
   };
 
   // ---- Direction placement inside mobile ----
@@ -165,18 +163,18 @@ const MobileShapePanel: React.FC = () => {
     };
     switch (direction) {
       case "top":
-        return { ...base, top: 12, left: "50%", transform: "translateX(-50%)" };
+        return { ...base, top: 16, left: "50%", transform: "translateX(-50%)" };
       case "bottom":
         return {
           ...base,
-          bottom: 12,
+          bottom: 16,
           left: "50%",
           transform: "translateX(-50%)",
         };
       case "right":
         return {
           ...base,
-          right: 12,
+          right: 16,
           top: "50%",
           transform: "translateY(-50%)",
         };
@@ -184,7 +182,7 @@ const MobileShapePanel: React.FC = () => {
       default:
         return {
           ...base,
-          left: 12,
+          left: 16,
           top: "50%",
           transform: "translateY(-50%)",
         };
@@ -297,25 +295,62 @@ const MobileShapePanel: React.FC = () => {
         )}
       </div>
 
-      {/* RIGHT: MOBILE MOCKUP */}
+      {/* RIGHT: GAME-STYLE MOBILE MOCKUP */}
       <div style={styles.rightPanel}>
-        <div style={styles.mobileShell}>
-          <div style={styles.mobileHeader}>Mirror The Shape</div>
-          <div style={styles.mobileInner}>
-            <div style={styles.mobileTopBar}>
-              <span>COMPLETE THE SHAPE</span>
+        <div style={styles.gameFrame}>
+          {/* Header row: back + coins/time */}
+          <div style={styles.gameHeaderRow}>
+            <div style={styles.backButton}>&lt;</div>
+            <div style={styles.headerBadges}>
+              <div style={styles.badgeCoin}>5</div>
+              <div style={styles.badgeTime}>0:15</div>
             </div>
-            <div style={styles.mobileScreen}>
-              {/* Here you could draw the base shape, using SVG, etc. */}
-              <div style={styles.baseShapePlaceholder}>Base Shape</div>
+          </div>
 
-              {croppedUrl && (
-                <img
-                  src={croppedUrl}
-                  alt="cropped"
-                  style={mobileImagePlacement}
-                />
-              )}
+          {/* Title */}
+          <div style={styles.gameTitle}>COMPLETE THE SHAPE</div>
+
+          {/* Progress and level */}
+          <div style={styles.progressRow}>
+            <div style={styles.progressBarOuter}>
+              <div style={styles.progressBarInner} />
+            </div>
+            <div style={styles.levelText}>1 OF 4</div>
+          </div>
+
+          {/* Toolbar icons */}
+          <div style={styles.toolbarRow}>
+            <div style={{ ...styles.toolButton, background: "#16a34a" }}>✏️</div>
+            <div style={{ ...styles.toolButton, background: "#0ea5e9" }}>⇄</div>
+            <div style={{ ...styles.toolButton, background: "#ef4444" }}>🗑</div>
+            <div style={{ ...styles.toolButton, background: "#f59e0b" }}>↺</div>
+            <div style={{ ...styles.toolButton, background: "#22c55e" }}>📷</div>
+          </div>
+
+          {/* Drawing card */}
+          <div style={styles.boardOuter}>
+            <div style={styles.boardInner}>
+              {/* base area where shape / drawing goes */}
+              <div style={styles.drawingArea}>
+                {/* existing base shape text removed; just a clean white board */}
+                {croppedUrl && (
+                  <img
+                    src={croppedUrl}
+                    alt="cropped"
+                    style={mobileImagePlacement}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom navigation arrows */}
+          <div style={styles.bottomNavRow}>
+            <div style={styles.navButton}>
+              <span style={styles.navArrow}>&lt;</span>
+            </div>
+            <div style={styles.navButton}>
+              <span style={styles.navArrow}>&gt;</span>
             </div>
           </div>
         </div>
@@ -427,58 +462,161 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #374151",
   },
 
-  // mobile mockup
-  mobileShell: {
-    width: 280,
-    height: 540,
-    borderRadius: 32,
-    background: "#111827",
-    padding: 10,
-    boxShadow: "0 12px 30px rgba(0,0,0,0.7)",
-    border: "3px solid #4b5563",
-    boxSizing: "border-box",
-  },
-  mobileHeader: {
-    textAlign: "center",
-    color: "#e5e7eb",
-    fontSize: 12,
-    marginBottom: 8,
-  },
-  mobileInner: {
-    flex: 1,
-    background: "linear-gradient(#93c5fd, #1d4ed8)",
+  // ---- Game-style mobile UI ----
+  gameFrame: {
+    width: 320,
+    height: 640,
     borderRadius: 24,
+    background:
+      "linear-gradient(to bottom, #8ecafc 0%, #8ecafc 40%, #52b788 80%, #3f612d 100%)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.7)",
     padding: 12,
     boxSizing: "border-box",
-    height: "100%",
-  },
-  mobileTopBar: {
-    background: "#4c1d95",
-    color: "white",
-    borderRadius: 999,
-    padding: "4px 8px",
-    fontSize: 11,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  mobileScreen: {
-    marginTop: 6,
-    background: "#3b0764",
-    borderRadius: 24,
-    padding: 10,
-    boxSizing: "border-box",
-    height: 420,
     position: "relative",
   },
-  baseShapePlaceholder: {
-    background: "white",
-    borderRadius: 16,
-    width: "100%",
-    height: "100%",
-    fontSize: 11,
-    color: "#9ca3af",
+  gameHeaderRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    borderRadius: "999px",
+    background: "#7c3aed",
+    border: "3px solid #fbbf24",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    color: "white",
+    fontWeight: 700,
+    cursor: "default",
+  },
+  headerBadges: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+  },
+  badgeCoin: {
+    padding: "2px 10px",
+    borderRadius: 999,
+    background: "#f97316",
+    color: "white",
+    fontSize: 11,
+    fontWeight: 700,
+    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+  },
+  badgeTime: {
+    padding: "2px 10px",
+    borderRadius: 999,
+    background: "#ef4444",
+    color: "white",
+    fontSize: 11,
+    fontWeight: 700,
+    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+  },
+  gameTitle: {
+    textAlign: "center",
+    fontWeight: 800,
+    color: "#4c1d95",
+    letterSpacing: 1,
+    fontSize: 14,
+    textTransform: "uppercase",
+    marginBottom: 8,
+    textShadow: "0 1px 0 #f9fafb",
+  },
+  progressRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    padding: "0 4px",
+  },
+  progressBarOuter: {
+    flex: 1,
+    height: 16,
+    borderRadius: 999,
+    background: "#f9fafb",
+    overflow: "hidden",
+    marginRight: 8,
+    border: "2px solid #e5e7eb",
+  },
+  progressBarInner: {
+    width: "0%",
+    height: "100%",
+    background: "#22c55e",
+    borderRadius: 999,
+  },
+  levelText: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#111827",
+  },
+  toolbarRow: {
+    display: "flex",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  toolButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    boxShadow: "0 3px 8px rgba(0,0,0,0.4)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 16,
+    color: "white",
+  },
+  boardOuter: {
+    flex: 1,
+    background: "#4c1d95",
+    borderRadius: 24,
+    padding: 8,
+    boxSizing: "border-box",
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  boardInner: {
+    background: "#4c1d95",
+    borderRadius: 16,
+    padding: 4,
+    boxSizing: "border-box",
+    height: 420,
+  },
+  drawingArea: {
+    background: "#f9fafb",
+    borderRadius: 20,
+    width: "100%",
+    height: "100%",
+    position: "relative",
+  },
+  bottomNavRow: {
+    position: "absolute",
+    bottom: 18,
+    left: 0,
+    width: "100%",
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "0 36px",
+    boxSizing: "border-box",
+  },
+  navButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    background: "#7c3aed",
+    border: "4px solid #fbbf24",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 5px 12px rgba(0,0,0,0.6)",
+  },
+  navArrow: {
+    fontSize: 24,
+    color: "white",
+    fontWeight: 800,
   },
 };
