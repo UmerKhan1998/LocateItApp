@@ -370,7 +370,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#111827",
     minHeight: "100vh",
     boxSizing: "border-box",
-    color: "#f9fafb",
+    color: "#FFFFFF",
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
   },
@@ -524,7 +524,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     textTransform: "uppercase",
     marginBottom: 8,
-    textShadow: "0 1px 0 #f9fafb",
+    textShadow: "0 1px 0 #FFFFFF",
   },
   progressRow: {
     display: "flex",
@@ -537,7 +537,7 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     height: 16,
     borderRadius: 999,
-    background: "#f9fafb",
+    background: "#FFFFFF",
     overflow: "hidden",
     marginRight: 8,
     border: "2px solid #e5e7eb",
@@ -587,7 +587,7 @@ const styles: Record<string, React.CSSProperties> = {
     height: 420,
   },
   drawingArea: {
-    background: "#f9fafb",
+    background: "#FFFFFF",
     borderRadius: 20,
     width: "100%",
     height: "100%",
