@@ -21,9 +21,7 @@ const MobileShapePanel: React.FC = () => {
     height: 0,
     active: false,
   });
-  // crop that was actually applied to the mobile preview
   const [appliedCrop, setAppliedCrop] = useState<Selection | null>(null);
-
   const [dragging, setDragging] = useState(false);
   const [savePayload, setSavePayload] = useState<any>(null);
 
@@ -87,7 +85,7 @@ const MobileShapePanel: React.FC = () => {
     dragStartRef.current = null;
   };
 
-  // ---- Submit: crop & show inside phone ----
+  // ---- Apply crop and show in mobile ----
   const handleApplyToMobile = () => {
     if (!imgRef.current || !canvasRef.current || !imageUrl) return;
 
@@ -100,7 +98,6 @@ const MobileShapePanel: React.FC = () => {
     const displayH = img.clientHeight;
     if (!displayW || !displayH) return;
 
-    // if no active selection, use whole image
     let sel: Selection;
     if (!selection.active) {
       sel = {
@@ -131,10 +128,10 @@ const MobileShapePanel: React.FC = () => {
     const dataUrl = canvas.toDataURL("image/png");
     setCroppedUrl(dataUrl);
     setAppliedCrop(sel);
-    setSavePayload(null); // reset old payload
+    setSavePayload(null);
   };
 
-  // ---- SAVE: create payload ----
+  // ---- SAVE payload ----
   const handleSave = () => {
     if (!croppedUrl || !appliedCrop) return;
 
@@ -154,7 +151,7 @@ const MobileShapePanel: React.FC = () => {
     console.log("SAVE PAYLOAD:", payload);
   };
 
-  // ---- Direction placement inside mobile ----
+  // ---- Direction placement inside mobile drawing board ----
   const mobileImagePlacement: React.CSSProperties = (() => {
     const base: React.CSSProperties = {
       maxWidth: "70%",
@@ -193,7 +190,7 @@ const MobileShapePanel: React.FC = () => {
 
   return (
     <div style={styles.page}>
-      {/* LEFT PANEL */}
+      {/* LEFT PANEL (unchanged logic) */}
       <div style={styles.leftPanel}>
         <h2 style={{ marginBottom: 8 }}>Panel</h2>
 
@@ -285,7 +282,6 @@ const MobileShapePanel: React.FC = () => {
           Save
         </button>
 
-        {/* hidden canvas */}
         <canvas ref={canvasRef} style={{ display: "none" }} />
 
         {savePayload && (
@@ -295,62 +291,76 @@ const MobileShapePanel: React.FC = () => {
         )}
       </div>
 
-      {/* RIGHT: GAME-STYLE MOBILE MOCKUP */}
+      {/* RIGHT PANEL – React Native UI converted to web preview */}
       <div style={styles.rightPanel}>
-        <div style={styles.gameFrame}>
-          {/* Header row: back + coins/time */}
-          <div style={styles.gameHeaderRow}>
-            <div style={styles.backButton}>&lt;</div>
-            <div style={styles.headerBadges}>
-              <div style={styles.badgeCoin}>5</div>
-              <div style={styles.badgeTime}>0:15</div>
-            </div>
-          </div>
-
-          {/* Title */}
-          <div style={styles.gameTitle}>COMPLETE THE SHAPE</div>
-
-          {/* Progress and level */}
-          <div style={styles.progressRow}>
-            <div style={styles.progressBarOuter}>
-              <div style={styles.progressBarInner} />
-            </div>
-            <div style={styles.levelText}>1 OF 4</div>
-          </div>
-
-          {/* Toolbar icons */}
-          <div style={styles.toolbarRow}>
-            <div style={{ ...styles.toolButton, background: "#16a34a" }}>✏️</div>
-            <div style={{ ...styles.toolButton, background: "#0ea5e9" }}>⇄</div>
-            <div style={{ ...styles.toolButton, background: "#ef4444" }}>🗑</div>
-            <div style={{ ...styles.toolButton, background: "#f59e0b" }}>↺</div>
-            <div style={{ ...styles.toolButton, background: "#22c55e" }}>📷</div>
-          </div>
-
-          {/* Drawing card */}
-          <div style={styles.boardOuter}>
-            <div style={styles.boardInner}>
-              {/* base area where shape / drawing goes */}
-              <div style={styles.drawingArea}>
-                {/* existing base shape text removed; just a clean white board */}
-                {croppedUrl && (
-                  <img
-                    src={croppedUrl}
-                    alt="cropped"
-                    style={mobileImagePlacement}
-                  />
-                )}
+        <div style={styles.deviceShell}>
+          {/* Screen background (ImageBackground in RN) */}
+          <div
+            style={styles.deviceScreenBg}
+          >
+            {/* Gradient card like your LinearGradient */}
+            <div style={styles.gradientCard}>
+              {/* header row (Btn + title) */}
+              <div style={styles.headerRow}>
+                <div style={styles.backChip}>{"<"}</div>
+                <div style={styles.headerTitle}>COMPLETE THE SHAPE</div>
               </div>
-            </div>
-          </div>
 
-          {/* Bottom navigation arrows */}
-          <div style={styles.bottomNavRow}>
-            <div style={styles.navButton}>
-              <span style={styles.navArrow}>&lt;</span>
-            </div>
-            <div style={styles.navButton}>
-              <span style={styles.navArrow}>&gt;</span>
+              {/* progress + count */}
+              <div style={styles.progressRow}>
+                <div style={styles.progressBarOuter}>
+                  <div
+                    style={{
+                      ...styles.progressBarInner,
+                      width: "0%", // this preview is always 0%; wire up if needed
+                    }}
+                  >
+                    <span style={styles.progressText}>0%</span>
+                  </div>
+                </div>
+                <div style={styles.progressCount}>1 of 4</div>
+              </div>
+
+              {/* tool buttons row */}
+              <div style={styles.toolRow}>
+                {/* in RN you use Images.drawingPencil, etc; here we use colored circles as placeholders */}
+                <div style={{ ...styles.toolIcon, background: "#16a34a" }}>✏️</div>
+                <div style={{ ...styles.toolIcon, background: "#0ea5e9" }}>✒️</div>
+                <div style={{ ...styles.toolIcon, background: "#ef4444" }}>🧹</div>
+                <div style={{ ...styles.toolIcon, background: "#f59e0b" }}>↺</div>
+              </div>
+
+              {/* drawing area card (ViewShot in RN) */}
+              <div style={styles.boardOuter}>
+                <div style={styles.boardInner}>
+                  {/* base shape image */}
+                  {/* TODO: replace BACKGROUND_SHAPE_URL with your actual shape image
+                      (equivalent to currentShape.image / screenShot) */}
+                  <div style={styles.drawingBoard}>
+                    {/* base shape could be an <img> here if you want */}
+                    {/* <img src={BASE_SHAPE_URL} style={styles.baseShapeImg} /> */}
+
+                    {/* cropped overlay from left panel */}
+                    {croppedUrl && (
+                      <img
+                        src={croppedUrl}
+                        alt="cropped"
+                        style={mobileImagePlacement}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* bottom nav arrows */}
+              <div style={styles.bottomNavRow}>
+                <div style={styles.navBtn}>
+                  <span style={styles.navArrow}>{"<"}</span>
+                </div>
+                <div style={styles.navBtn}>
+                  <span style={styles.navArrow}>{">"}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -462,161 +472,164 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #374151",
   },
 
-  // ---- Game-style mobile UI ----
-  gameFrame: {
+  // ----- "CompleteTheShape" mobile UI converted to web -----
+  deviceShell: {
     width: 320,
     height: 640,
+    borderRadius: 30,
+    background: "#000", // phone bezel
+    padding: 8,
+    boxSizing: "border-box",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.8)",
+  },
+  deviceScreenBg: {
+    flex: 1,
+    height: "100%",
     borderRadius: 24,
+    overflow: "hidden",
+    // TODO: replace with your background image if you want exact same art
+    // backgroundImage: "url('/path/to/level1.png')",
     background:
       "linear-gradient(to bottom, #8ecafc 0%, #8ecafc 40%, #52b788 80%, #3f612d 100%)",
-    boxShadow: "0 16px 40px rgba(0,0,0,0.7)",
-    padding: 12,
-    boxSizing: "border-box",
-    position: "relative",
-  },
-  gameHeaderRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: "999px",
-    background: "#7c3aed",
-    border: "3px solid #fbbf24",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "white",
-    fontWeight: 700,
-    cursor: "default",
+    padding: 10,
+    boxSizing: "border-box",
   },
-  headerBadges: {
+  gradientCard: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 24,
+    background: "linear-gradient(#3b0764, #a855f7)",
+    padding: 12,
+    boxSizing: "border-box",
     display: "flex",
-    gap: 8,
+    flexDirection: "column",
+  },
+  headerRow: {
+    flexDirection: "row",
+    display: "flex",
     alignItems: "center",
+    gap: 8,
   },
-  badgeCoin: {
-    padding: "2px 10px",
+  backChip: {
+    width: 32,
+    height: 32,
     borderRadius: 999,
-    background: "#f97316",
-    color: "white",
-    fontSize: 11,
+    border: "3px solid #facc15",
+    background: "#7c3aed",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
     fontWeight: 700,
-    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+    fontSize: 16,
   },
-  badgeTime: {
-    padding: "2px 10px",
-    borderRadius: 999,
-    background: "#ef4444",
-    color: "white",
-    fontSize: 11,
-    fontWeight: 700,
-    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-  },
-  gameTitle: {
+  headerTitle: {
+    flex: 1,
     textAlign: "center",
+    color: "#facc15",
     fontWeight: 800,
-    color: "#4c1d95",
-    letterSpacing: 1,
     fontSize: 14,
-    textTransform: "uppercase",
-    marginBottom: 8,
-    textShadow: "0 1px 0 #f9fafb",
+    textShadow: "0 1px 1px rgba(0,0,0,0.4)",
   },
   progressRow: {
     display: "flex",
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-    padding: "0 4px",
+    gap: 10,
+    marginTop: 10,
+    paddingHorizontal: 6,
+    boxSizing: "border-box",
   },
   progressBarOuter: {
     flex: 1,
-    height: 16,
-    borderRadius: 999,
-    background: "#f9fafb",
+    borderRadius: 20,
     overflow: "hidden",
-    marginRight: 8,
+    background: "#f9fafb",
     border: "2px solid #e5e7eb",
+    height: 18,
   },
   progressBarInner: {
-    width: "0%",
     height: "100%",
-    background: "#22c55e",
-    borderRadius: 999,
-  },
-  levelText: {
-    fontSize: 11,
-    fontWeight: 700,
-    color: "#111827",
-  },
-  toolbarRow: {
+    borderRadius: 20,
+    background: "linear-gradient(90deg,#22c55e,#a3e635)",
     display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingRight: 6,
+    boxSizing: "border-box",
+  },
+  progressText: {
+    fontSize: 10,
+    color: "#052e16",
+    fontWeight: 700,
+  },
+  progressCount: {
+    fontSize: 11,
+    color: "#f9fafb",
+    fontWeight: 700,
+  },
+  toolRow: {
+    marginTop: 12,
+    display: "flex",
+    flexDirection: "row",
     justifyContent: "center",
     gap: 10,
-    marginBottom: 8,
   },
-  toolButton: {
-    width: 36,
-    height: 36,
+  toolIcon: {
+    width: 40,
+    height: 40,
     borderRadius: 999,
-    boxShadow: "0 3px 8px rgba(0,0,0,0.4)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: 16,
-    color: "white",
+    boxShadow: "0 3px 7px rgba(0,0,0,0.5)",
+    fontSize: 18,
+    color: "#fff",
   },
   boardOuter: {
+    marginTop: 12,
     flex: 1,
-    background: "#4c1d95",
-    borderRadius: 24,
-    padding: 8,
-    boxSizing: "border-box",
-    marginTop: 4,
-    marginBottom: 16,
+    display: "flex",
   },
   boardInner: {
-    background: "#4c1d95",
-    borderRadius: 16,
-    padding: 4,
-    boxSizing: "border-box",
-    height: 420,
-  },
-  drawingArea: {
-    background: "#f9fafb",
+    flex: 1,
+    background: "#3b0764",
     borderRadius: 20,
-    width: "100%",
-    height: "100%",
+    padding: 10,
+    boxSizing: "border-box",
+  },
+  drawingBoard: {
+    flex: 1,
+    borderRadius: 18,
+    background: "#fff",
     position: "relative",
+    overflow: "hidden",
   },
   bottomNavRow: {
-    position: "absolute",
-    bottom: 18,
-    left: 0,
-    width: "100%",
+    marginTop: 12,
     display: "flex",
+    flexDirection: "row",
     justifyContent: "space-between",
-    padding: "0 36px",
+    paddingHorizontal: 32,
     boxSizing: "border-box",
   },
-  navButton: {
+  navBtn: {
     width: 56,
     height: 56,
     borderRadius: 999,
     background: "#7c3aed",
-    border: "4px solid #fbbf24",
+    border: "4px solid #facc15",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 5px 12px rgba(0,0,0,0.6)",
+    boxShadow: "0 5px 12px rgba(0,0,0,0.7)",
   },
   navArrow: {
+    color: "#fff",
     fontSize: 24,
-    color: "white",
     fontWeight: 800,
   },
 };
