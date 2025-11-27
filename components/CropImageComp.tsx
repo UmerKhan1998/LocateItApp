@@ -21,7 +21,9 @@ const MobileShapePanel: React.FC = () => {
     height: 0,
     active: false,
   });
+  // crop that was actually applied to the mobile preview
   const [appliedCrop, setAppliedCrop] = useState<Selection | null>(null);
+
   const [dragging, setDragging] = useState(false);
   const [savePayload, setSavePayload] = useState<any>(null);
 
@@ -85,90 +87,54 @@ const MobileShapePanel: React.FC = () => {
     dragStartRef.current = null;
   };
 
-  // ---- Apply crop and show in mobile (FIXED) ----
+  // ---- Submit: crop & show inside phone ----
   const handleApplyToMobile = () => {
-    if (!imageUrl) return;
+    if (!imgRef.current || !canvasRef.current || !imageUrl) return;
 
-    // If for any reason we cannot access image/canvas, just show the full image in mobile
-    if (!imgRef.current || !canvasRef.current) {
-      setCroppedUrl(imageUrl);
-      setAppliedCrop({
+    const img = imgRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const displayW = img.clientWidth;
+    const displayH = img.clientHeight;
+    if (!displayW || !displayH) return;
+
+    // if no active selection, use whole image
+    let sel: Selection;
+    if (!selection.active) {
+      sel = {
         x: 0,
         y: 0,
-        width: 0,
-        height: 0,
-        active: false,
-      });
-      return;
+        width: displayW,
+        height: displayH,
+        active: true,
+      };
+    } else {
+      sel = selection;
     }
 
-    try {
-      const img = imgRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
+    const scaleX = img.naturalWidth / displayW;
+    const scaleY = img.naturalHeight / displayH;
 
-      if (!ctx) {
-        // fallback: just show original
-        setCroppedUrl(imageUrl);
-        return;
-      }
+    const sx = sel.x * scaleX;
+    const sy = sel.y * scaleY;
+    const sw = sel.width * scaleX;
+    const sh = sel.height * scaleY;
 
-      const rect = img.getBoundingClientRect();
-      const displayW = rect.width || img.clientWidth || img.naturalWidth;
-      const displayH = rect.height || img.clientHeight || img.naturalHeight;
+    canvas.width = sw;
+    canvas.height = sh;
 
-      if (!displayW || !displayH) {
-        setCroppedUrl(imageUrl);
-        return;
-      }
+    ctx.clearRect(0, 0, sw, sh);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
 
-      // if no active selection, use whole image
-      let sel: Selection;
-      if (!selection.active) {
-        sel = {
-          x: 0,
-          y: 0,
-          width: displayW,
-          height: displayH,
-          active: true,
-        };
-      } else {
-        sel = selection;
-      }
-
-      const scaleX = img.naturalWidth / displayW;
-      const scaleY = img.naturalHeight / displayH;
-
-      const sx = sel.x * scaleX;
-      const sy = sel.y * scaleY;
-      const sw = sel.width * scaleX;
-      const sh = sel.height * scaleY;
-
-      // if crop is too small, just show original
-      if (sw <= 0 || sh <= 0) {
-        setCroppedUrl(imageUrl);
-        setAppliedCrop(sel);
-        return;
-      }
-
-      canvas.width = sw;
-      canvas.height = sh;
-
-      ctx.clearRect(0, 0, sw, sh);
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-
-      const dataUrl = canvas.toDataURL("image/png");
-      setCroppedUrl(dataUrl);
-      setAppliedCrop(sel);
-      setSavePayload(null);
-    } catch (err) {
-      console.error("Error applying crop:", err);
-      // last fallback – still show something
-      setCroppedUrl(imageUrl);
-    }
+    const dataUrl = canvas.toDataURL("image/png");
+    setCroppedUrl(dataUrl);
+    setAppliedCrop(sel);
+    setSavePayload(null); // reset old payload
   };
 
-  // ---- SAVE payload ----
+  // ---- SAVE: create payload ----
   const handleSave = () => {
     if (!croppedUrl || !appliedCrop) return;
 
@@ -188,7 +154,7 @@ const MobileShapePanel: React.FC = () => {
     console.log("SAVE PAYLOAD:", payload);
   };
 
-  // ---- Direction placement inside mobile drawing board ----
+  // ---- Direction placement inside mobile ----
   const mobileImagePlacement: React.CSSProperties = (() => {
     const base: React.CSSProperties = {
       maxWidth: "70%",
@@ -319,6 +285,7 @@ const MobileShapePanel: React.FC = () => {
           Save
         </button>
 
+        {/* hidden canvas */}
         <canvas ref={canvasRef} style={{ display: "none" }} />
 
         {savePayload && (
@@ -328,56 +295,62 @@ const MobileShapePanel: React.FC = () => {
         )}
       </div>
 
-      {/* RIGHT PANEL – mobile preview (same UI as before) */}
+      {/* RIGHT: GAME-STYLE MOBILE MOCKUP */}
       <div style={styles.rightPanel}>
-        <div style={styles.deviceShell}>
-          <div style={styles.deviceScreenBg}>
-            <div style={styles.gradientCard}>
-              <div style={styles.headerRow}>
-                <div style={styles.backChip}>{"<"}</div>
-                <div style={styles.headerTitle}>COMPLETE THE SHAPE</div>
-              </div>
+        <div style={styles.gameFrame}>
+          {/* Header row: back + coins/time */}
+          <div style={styles.gameHeaderRow}>
+            <div style={styles.backButton}>&lt;</div>
+            <div style={styles.headerBadges}>
+              <div style={styles.badgeCoin}>5</div>
+              <div style={styles.badgeTime}>0:15</div>
+            </div>
+          </div>
 
-              <div style={styles.progressRow}>
-                <div style={styles.progressBarOuter}>
-                  <div style={{ ...styles.progressBarInner, width: "0%" }}>
-                    <span style={styles.progressText}>0%</span>
-                  </div>
-                </div>
-                <div style={styles.progressCount}>1 of 4</div>
-              </div>
+          {/* Title */}
+          <div style={styles.gameTitle}>COMPLETE THE SHAPE</div>
 
-              <div style={styles.toolRow}>
-                <div style={{ ...styles.toolIcon, background: "#16a34a" }}>✏️</div>
-                <div style={{ ...styles.toolIcon, background: "#0ea5e9" }}>✒️</div>
-                <div style={{ ...styles.toolIcon, background: "#ef4444" }}>🧹</div>
-                <div style={{ ...styles.toolIcon, background: "#f59e0b" }}>↺</div>
-              </div>
+          {/* Progress and level */}
+          <div style={styles.progressRow}>
+            <div style={styles.progressBarOuter}>
+              <div style={styles.progressBarInner} />
+            </div>
+            <div style={styles.levelText}>1 OF 4</div>
+          </div>
 
-              <div style={styles.boardOuter}>
-                <div style={styles.boardInner}>
-                  <div style={styles.drawingBoard}>
-                    {/* base shape could go here as an <img> */}
+          {/* Toolbar icons */}
+          <div style={styles.toolbarRow}>
+            <div style={{ ...styles.toolButton, background: "#16a34a" }}>✏️</div>
+            <div style={{ ...styles.toolButton, background: "#0ea5e9" }}>⇄</div>
+            <div style={{ ...styles.toolButton, background: "#ef4444" }}>🗑</div>
+            <div style={{ ...styles.toolButton, background: "#f59e0b" }}>↺</div>
+            <div style={{ ...styles.toolButton, background: "#22c55e" }}>📷</div>
+          </div>
 
-                    {croppedUrl && (
-                      <img
-                        src={croppedUrl}
-                        alt="cropped"
-                        style={mobileImagePlacement}
-                      />
-                    )}
-                  </div>
-                </div>
+          {/* Drawing card */}
+          <div style={styles.boardOuter}>
+            <div style={styles.boardInner}>
+              {/* base area where shape / drawing goes */}
+              <div style={styles.drawingArea}>
+                {/* existing base shape text removed; just a clean white board */}
+                {croppedUrl && (
+                  <img
+                    src={croppedUrl}
+                    alt="cropped"
+                    style={mobileImagePlacement}
+                  />
+                )}
               </div>
+            </div>
+          </div>
 
-              <div style={styles.bottomNavRow}>
-                <div style={styles.navBtn}>
-                  <span style={styles.navArrow}>{"<"}</span>
-                </div>
-                <div style={styles.navBtn}>
-                  <span style={styles.navArrow}>{">"}</span>
-                </div>
-              </div>
+          {/* Bottom navigation arrows */}
+          <div style={styles.bottomNavRow}>
+            <div style={styles.navButton}>
+              <span style={styles.navArrow}>&lt;</span>
+            </div>
+            <div style={styles.navButton}>
+              <span style={styles.navArrow}>&gt;</span>
             </div>
           </div>
         </div>
@@ -489,162 +462,161 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #374151",
   },
 
-  // mobile preview styles
-  deviceShell: {
+  // ---- Game-style mobile UI ----
+  gameFrame: {
     width: 320,
     height: 640,
-    borderRadius: 30,
-    background: "#000",
-    padding: 8,
-    boxSizing: "border-box",
-    boxShadow: "0 18px 40px rgba(0,0,0,0.8)",
-  },
-  deviceScreenBg: {
-    flex: 1,
-    height: "100%",
     borderRadius: 24,
-    overflow: "hidden",
     background:
       "linear-gradient(to bottom, #8ecafc 0%, #8ecafc 40%, #52b788 80%, #3f612d 100%)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 10,
-    boxSizing: "border-box",
-  },
-  gradientCard: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 24,
-    background: "linear-gradient(#3b0764, #a855f7)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.7)",
     padding: 12,
     boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
+    position: "relative",
   },
-  headerRow: {
-    flexDirection: "row",
+  gameHeaderRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "space-between",
+    marginBottom: 8,
   },
-  backChip: {
+  backButton: {
     width: 32,
     height: 32,
-    borderRadius: 999,
-    border: "3px solid #facc15",
+    borderRadius: "999px",
     background: "#7c3aed",
+    border: "3px solid #fbbf24",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#fff",
+    color: "white",
     fontWeight: 700,
-    fontSize: 16,
+    cursor: "default",
   },
-  headerTitle: {
-    flex: 1,
+  headerBadges: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+  },
+  badgeCoin: {
+    padding: "2px 10px",
+    borderRadius: 999,
+    background: "#f97316",
+    color: "white",
+    fontSize: 11,
+    fontWeight: 700,
+    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+  },
+  badgeTime: {
+    padding: "2px 10px",
+    borderRadius: 999,
+    background: "#ef4444",
+    color: "white",
+    fontSize: 11,
+    fontWeight: 700,
+    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+  },
+  gameTitle: {
     textAlign: "center",
-    color: "#facc15",
     fontWeight: 800,
+    color: "#4c1d95",
+    letterSpacing: 1,
     fontSize: 14,
-    textShadow: "0 1px 1px rgba(0,0,0,0.4)",
+    textTransform: "uppercase",
+    marginBottom: 8,
+    textShadow: "0 1px 0 #f9fafb",
   },
   progressRow: {
     display: "flex",
-    flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginTop: 10,
-    paddingHorizontal: 6,
-    boxSizing: "border-box",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    padding: "0 4px",
   },
   progressBarOuter: {
     flex: 1,
-    borderRadius: 20,
-    overflow: "hidden",
+    height: 16,
+    borderRadius: 999,
     background: "#f9fafb",
+    overflow: "hidden",
+    marginRight: 8,
     border: "2px solid #e5e7eb",
-    height: 18,
   },
   progressBarInner: {
+    width: "0%",
     height: "100%",
-    borderRadius: 20,
-    background: "linear-gradient(90deg,#22c55e,#a3e635)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    paddingRight: 6,
-    boxSizing: "border-box",
+    background: "#22c55e",
+    borderRadius: 999,
   },
-  progressText: {
-    fontSize: 10,
-    color: "#052e16",
-    fontWeight: 700,
-  },
-  progressCount: {
+  levelText: {
     fontSize: 11,
-    color: "#f9fafb",
     fontWeight: 700,
+    color: "#111827",
   },
-  toolRow: {
-    marginTop: 12,
+  toolbarRow: {
     display: "flex",
-    flexDirection: "row",
     justifyContent: "center",
     gap: 10,
+    marginBottom: 8,
   },
-  toolIcon: {
-    width: 40,
-    height: 40,
+  toolButton: {
+    width: 36,
+    height: 36,
     borderRadius: 999,
+    boxShadow: "0 3px 8px rgba(0,0,0,0.4)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 3px 7px rgba(0,0,0,0.5)",
-    fontSize: 18,
-    color: "#fff",
+    fontSize: 16,
+    color: "white",
   },
   boardOuter: {
-    marginTop: 12,
     flex: 1,
-    display: "flex",
+    background: "#4c1d95",
+    borderRadius: 24,
+    padding: 8,
+    boxSizing: "border-box",
+    marginTop: 4,
+    marginBottom: 16,
   },
   boardInner: {
-    flex: 1,
-    background: "#3b0764",
-    borderRadius: 20,
-    padding: 10,
+    background: "#4c1d95",
+    borderRadius: 16,
+    padding: 4,
     boxSizing: "border-box",
+    height: 420,
   },
-  drawingBoard: {
-    flex: 1,
-    borderRadius: 18,
-    background: "#fff",
+  drawingArea: {
+    background: "#f9fafb",
+    borderRadius: 20,
+    width: "100%",
+    height: "100%",
     position: "relative",
-    overflow: "hidden",
   },
   bottomNavRow: {
-    marginTop: 12,
+    position: "absolute",
+    bottom: 18,
+    left: 0,
+    width: "100%",
     display: "flex",
-    flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 32,
+    padding: "0 36px",
     boxSizing: "border-box",
   },
-  navBtn: {
+  navButton: {
     width: 56,
     height: 56,
     borderRadius: 999,
     background: "#7c3aed",
-    border: "4px solid #facc15",
+    border: "4px solid #fbbf24",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 5px 12px rgba(0,0,0,0.7)",
+    boxShadow: "0 5px 12px rgba(0,0,0,0.6)",
   },
   navArrow: {
-    color: "#fff",
     fontSize: 24,
+    color: "white",
     fontWeight: 800,
   },
 };
