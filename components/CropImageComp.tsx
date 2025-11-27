@@ -640,4 +640,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 5
+    boxShadow: "0 5px 12px rgba(0,0,0,0.7)",
+  },
+  navArrow: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: 800,
+  },
+};
