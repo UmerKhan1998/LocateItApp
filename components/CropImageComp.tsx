@@ -85,50 +85,87 @@ const MobileShapePanel: React.FC = () => {
     dragStartRef.current = null;
   };
 
-  // ---- Apply crop and show in mobile ----
+  // ---- Apply crop and show in mobile (FIXED) ----
   const handleApplyToMobile = () => {
-    if (!imgRef.current || !canvasRef.current || !imageUrl) return;
+    if (!imageUrl) return;
 
-    const img = imgRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const displayW = img.clientWidth;
-    const displayH = img.clientHeight;
-    if (!displayW || !displayH) return;
-
-    let sel: Selection;
-    if (!selection.active) {
-      sel = {
+    // If for any reason we cannot access image/canvas, just show the full image in mobile
+    if (!imgRef.current || !canvasRef.current) {
+      setCroppedUrl(imageUrl);
+      setAppliedCrop({
         x: 0,
         y: 0,
-        width: displayW,
-        height: displayH,
-        active: true,
-      };
-    } else {
-      sel = selection;
+        width: 0,
+        height: 0,
+        active: false,
+      });
+      return;
     }
 
-    const scaleX = img.naturalWidth / displayW;
-    const scaleY = img.naturalHeight / displayH;
+    try {
+      const img = imgRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
 
-    const sx = sel.x * scaleX;
-    const sy = sel.y * scaleY;
-    const sw = sel.width * scaleX;
-    const sh = sel.height * scaleY;
+      if (!ctx) {
+        // fallback: just show original
+        setCroppedUrl(imageUrl);
+        return;
+      }
 
-    canvas.width = sw;
-    canvas.height = sh;
+      const rect = img.getBoundingClientRect();
+      const displayW = rect.width || img.clientWidth || img.naturalWidth;
+      const displayH = rect.height || img.clientHeight || img.naturalHeight;
 
-    ctx.clearRect(0, 0, sw, sh);
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      if (!displayW || !displayH) {
+        setCroppedUrl(imageUrl);
+        return;
+      }
 
-    const dataUrl = canvas.toDataURL("image/png");
-    setCroppedUrl(dataUrl);
-    setAppliedCrop(sel);
-    setSavePayload(null);
+      // if no active selection, use whole image
+      let sel: Selection;
+      if (!selection.active) {
+        sel = {
+          x: 0,
+          y: 0,
+          width: displayW,
+          height: displayH,
+          active: true,
+        };
+      } else {
+        sel = selection;
+      }
+
+      const scaleX = img.naturalWidth / displayW;
+      const scaleY = img.naturalHeight / displayH;
+
+      const sx = sel.x * scaleX;
+      const sy = sel.y * scaleY;
+      const sw = sel.width * scaleX;
+      const sh = sel.height * scaleY;
+
+      // if crop is too small, just show original
+      if (sw <= 0 || sh <= 0) {
+        setCroppedUrl(imageUrl);
+        setAppliedCrop(sel);
+        return;
+      }
+
+      canvas.width = sw;
+      canvas.height = sh;
+
+      ctx.clearRect(0, 0, sw, sh);
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      const dataUrl = canvas.toDataURL("image/png");
+      setCroppedUrl(dataUrl);
+      setAppliedCrop(sel);
+      setSavePayload(null);
+    } catch (err) {
+      console.error("Error applying crop:", err);
+      // last fallback – still show something
+      setCroppedUrl(imageUrl);
+    }
   };
 
   // ---- SAVE payload ----
@@ -190,7 +227,7 @@ const MobileShapePanel: React.FC = () => {
 
   return (
     <div style={styles.page}>
-      {/* LEFT PANEL (unchanged logic) */}
+      {/* LEFT PANEL */}
       <div style={styles.leftPanel}>
         <h2 style={{ marginBottom: 8 }}>Panel</h2>
 
@@ -291,56 +328,37 @@ const MobileShapePanel: React.FC = () => {
         )}
       </div>
 
-      {/* RIGHT PANEL – React Native UI converted to web preview */}
+      {/* RIGHT PANEL – mobile preview (same UI as before) */}
       <div style={styles.rightPanel}>
         <div style={styles.deviceShell}>
-          {/* Screen background (ImageBackground in RN) */}
-          <div
-            style={styles.deviceScreenBg}
-          >
-            {/* Gradient card like your LinearGradient */}
+          <div style={styles.deviceScreenBg}>
             <div style={styles.gradientCard}>
-              {/* header row (Btn + title) */}
               <div style={styles.headerRow}>
                 <div style={styles.backChip}>{"<"}</div>
                 <div style={styles.headerTitle}>COMPLETE THE SHAPE</div>
               </div>
 
-              {/* progress + count */}
               <div style={styles.progressRow}>
                 <div style={styles.progressBarOuter}>
-                  <div
-                    style={{
-                      ...styles.progressBarInner,
-                      width: "0%", // this preview is always 0%; wire up if needed
-                    }}
-                  >
+                  <div style={{ ...styles.progressBarInner, width: "0%" }}>
                     <span style={styles.progressText}>0%</span>
                   </div>
                 </div>
                 <div style={styles.progressCount}>1 of 4</div>
               </div>
 
-              {/* tool buttons row */}
               <div style={styles.toolRow}>
-                {/* in RN you use Images.drawingPencil, etc; here we use colored circles as placeholders */}
                 <div style={{ ...styles.toolIcon, background: "#16a34a" }}>✏️</div>
                 <div style={{ ...styles.toolIcon, background: "#0ea5e9" }}>✒️</div>
                 <div style={{ ...styles.toolIcon, background: "#ef4444" }}>🧹</div>
                 <div style={{ ...styles.toolIcon, background: "#f59e0b" }}>↺</div>
               </div>
 
-              {/* drawing area card (ViewShot in RN) */}
               <div style={styles.boardOuter}>
                 <div style={styles.boardInner}>
-                  {/* base shape image */}
-                  {/* TODO: replace BACKGROUND_SHAPE_URL with your actual shape image
-                      (equivalent to currentShape.image / screenShot) */}
                   <div style={styles.drawingBoard}>
-                    {/* base shape could be an <img> here if you want */}
-                    {/* <img src={BASE_SHAPE_URL} style={styles.baseShapeImg} /> */}
+                    {/* base shape could go here as an <img> */}
 
-                    {/* cropped overlay from left panel */}
                     {croppedUrl && (
                       <img
                         src={croppedUrl}
@@ -352,7 +370,6 @@ const MobileShapePanel: React.FC = () => {
                 </div>
               </div>
 
-              {/* bottom nav arrows */}
               <div style={styles.bottomNavRow}>
                 <div style={styles.navBtn}>
                   <span style={styles.navArrow}>{"<"}</span>
@@ -472,12 +489,12 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #374151",
   },
 
-  // ----- "CompleteTheShape" mobile UI converted to web -----
+  // mobile preview styles
   deviceShell: {
     width: 320,
     height: 640,
     borderRadius: 30,
-    background: "#000", // phone bezel
+    background: "#000",
     padding: 8,
     boxSizing: "border-box",
     boxShadow: "0 18px 40px rgba(0,0,0,0.8)",
@@ -487,8 +504,6 @@ const styles: Record<string, React.CSSProperties> = {
     height: "100%",
     borderRadius: 24,
     overflow: "hidden",
-    // TODO: replace with your background image if you want exact same art
-    // backgroundImage: "url('/path/to/level1.png')",
     background:
       "linear-gradient(to bottom, #8ecafc 0%, #8ecafc 40%, #52b788 80%, #3f612d 100%)",
     display: "flex",
@@ -625,11 +640,4 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 5px 12px rgba(0,0,0,0.7)",
-  },
-  navArrow: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: 800,
-  },
-};
+    boxShadow: "0 5
