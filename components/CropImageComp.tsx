@@ -1,31 +1,19 @@
 import React, { useState } from "react";
 
 type CellValue = 0 | 1;
-
 type Tool = "wall" | "start" | "end" | "erase";
-
-interface MazeConfiguratorProps {
-  characterImgSrc?: string;
-  goalImgSrc?: string;
-  rows?: number;
-  cols?: number;
-}
 
 interface Position {
   row: number;
   col: number;
 }
 
-const MazeConfigurator: React.FC<MazeConfiguratorProps> = ({
-  characterImgSrc = "https://via.placeholder.com/32?text=P", // character image
-  goalImgSrc = "https://via.placeholder.com/32?text=G", // goal image
-  rows = 10,
-  cols = 10,
-}) => {
-  // 0 = walkable, 1 = wall
+const GRID_SIZE = 10;
+
+const MazeConfigurator: React.FC = () => {
   const [matrix, setMatrix] = useState<CellValue[][]>(
-    Array.from({ length: rows }, () =>
-      Array.from({ length: cols }, () => 0)
+    Array.from({ length: GRID_SIZE }, () =>
+      Array.from({ length: GRID_SIZE }, () => 0)
     )
   );
 
@@ -33,339 +21,199 @@ const MazeConfigurator: React.FC<MazeConfiguratorProps> = ({
   const [start, setStart] = useState<Position | null>(null);
   const [end, setEnd] = useState<Position | null>(null);
 
+  const [characterImg, setCharacterImg] = useState<string | null>(null);
+  const [endImg, setEndImg] = useState<string | null>(null);
+
+  // image upload handler
+  const handleImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: "character" | "end"
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (type === "character") setCharacterImg(reader.result as string);
+      else setEndImg(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleCellClick = (row: number, col: number) => {
     setMatrix((prev) => {
       const copy = prev.map((r) => [...r]);
-      const current = copy[row][col];
 
       if (tool === "wall") {
-        copy[row][col] = current === 1 ? 0 : 1;
-        // if making a wall, clear start/end if they were here
-        if (start && start.row === row && start.col === col) setStart(null);
-        if (end && end.row === row && end.col === col) setEnd(null);
+        copy[row][col] = copy[row][col] === 1 ? 0 : 1;
       } else if (tool === "erase") {
         copy[row][col] = 0;
-        if (start && start.row === row && start.col === col) setStart(null);
-        if (end && end.row === row && end.col === col) setEnd(null);
+        if (start?.row === row && start.col === col) setStart(null);
+        if (end?.row === row && end.col === col) setEnd(null);
       } else if (tool === "start") {
-        // start must be on walkable cell
         copy[row][col] = 0;
         setStart({ row, col });
       } else if (tool === "end") {
-        // end must be on walkable cell
         copy[row][col] = 0;
         setEnd({ row, col });
       }
-
       return copy;
     });
   };
 
-  const resetMaze = () => {
-    setMatrix(
-      Array.from({ length: rows }, () =>
-        Array.from({ length: cols }, () => 0)
-      )
-    );
-    setStart(null);
-    setEnd(null);
-    setTool("wall");
-  };
-
-  const exportConfig = () => {
-    const config = {
-      matrix,
-      start,
-      end,
-    };
-    console.log("Maze config:", config);
-    alert("Maze config logged to console");
-  };
-
-  const isStart = (row: number, col: number) =>
-    start && start.row === row && start.col === col;
-  const isEnd = (row: number, col: number) =>
-    end && end.row === row && end.col === col;
-
   return (
-    <div className="maze-configurator" style={styles.container}>
-      {/* Controls */}
+    <div style={styles.container}>
+      {/* Sidebar */}
       <div style={styles.sidebar}>
-        <h2 style={styles.heading}>Maze Configurator (10 x 10)</h2>
+        <h2>Maze Admin</h2>
 
-        <div style={styles.section}>
-          <h3 style={styles.subheading}>Tools</h3>
-          <div style={styles.toolsRow}>
-            <button
-              style={{
-                ...styles.button,
-                ...(tool === "wall" ? styles.buttonActive : {}),
-              }}
-              onClick={() => setTool("wall")}
-            >
-              Wall (1)
-            </button>
-            <button
-              style={{
-                ...styles.button,
-                ...(tool === "erase" ? styles.buttonActive : {}),
-              }}
-              onClick={() => setTool("erase")}
-            >
-              Erase (0)
-            </button>
-          </div>
-          <div style={styles.toolsRow}>
-            <button
-              style={{
-                ...styles.button,
-                ...(tool === "start" ? styles.buttonActive : {}),
-              }}
-              onClick={() => setTool("start")}
-            >
-              Set Start
-            </button>
-            <button
-              style={{
-                ...styles.button,
-                ...(tool === "end" ? styles.buttonActive : {}),
-              }}
-              onClick={() => setTool("end")}
-            >
-              Set End
-            </button>
-          </div>
-        </div>
-
-        <div style={styles.section}>
-          <h3 style={styles.subheading}>Info</h3>
-          <p style={styles.infoText}>
-            <strong>Start:</strong>{" "}
-            {start ? `(${start.row}, ${start.col})` : "Not set"}
-          </p>
-          <p style={styles.infoText}>
-            <strong>End:</strong>{" "}
-            {end ? `(${end.row}, ${end.col})` : "Not set"}
-          </p>
-        </div>
-
-        <div style={styles.section}>
-          <button style={styles.secondaryButton} onClick={resetMaze}>
-            Reset Maze
+        <h4>Tools</h4>
+        {["wall", "erase", "start", "end"].map((t) => (
+          <button
+            key={t}
+            style={{
+              ...styles.button,
+              background: tool === t ? "#2563eb" : "#f1f5f9",
+              color: tool === t ? "white" : "black",
+            }}
+            onClick={() => setTool(t as Tool)}
+          >
+            {t.toUpperCase()}
           </button>
-          <button style={styles.primaryButton} onClick={exportConfig}>
-            Export Config (console.log)
-          </button>
-        </div>
+        ))}
+
+        <h4>Upload Images</h4>
+
+        <label>
+          Character Image
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleImageUpload(e, "character")}
+          />
+        </label>
+
+        {characterImg && (
+          <img src={characterImg} style={styles.preview} />
+        )}
+
+        <label>
+          End Point Image
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleImageUpload(e, "end")}
+          />
+        </label>
+
+        {endImg && <img src={endImg} style={styles.preview} />}
+
+        <h4>Export</h4>
+        <pre style={styles.code}>
+{JSON.stringify(
+  {
+    matrix,
+    start,
+    end,
+    characterImg,
+    endImg,
+  },
+  null,
+  2
+)}
+        </pre>
       </div>
 
-      {/* Grid + Preview */}
-      <div style={styles.mainArea}>
-        <div style={styles.gridWrapper}>
-          <div
-            style={{
-              ...styles.grid,
-              gridTemplateRows: `repeat(${rows}, 1fr)`,
-              gridTemplateColumns: `repeat(${cols}, 1fr)`,
-            }}
-          >
-            {matrix.map((rowArr, row) =>
-              rowArr.map((cell, col) => {
-                const wall = cell === 1;
-                const startHere = isStart(row, col);
-                const endHere = isEnd(row, col);
+      {/* Grid */}
+      <div style={styles.grid}>
+        {matrix.map((row, r) =>
+          row.map((cell, c) => {
+            const isStart = start?.row === r && start.col === c;
+            const isEnd = end?.row === r && end.col === c;
 
-                return (
-                  <div
-                    key={`${row}-${col}`}
-                    style={{
-                      ...styles.cell,
-                      ...(wall ? styles.wallCell : styles.pathCell),
-                      ...(startHere ? styles.startCell : {}),
-                      ...(endHere ? styles.endCell : {}),
-                    }}
-                    onClick={() => handleCellClick(row, col)}
-                  >
-                    {startHere && (
-                      <img
-                        src={characterImgSrc}
-                        alt="Start"
-                        style={styles.cellImage}
-                      />
-                    )}
-                    {endHere && (
-                      <img
-                        src={goalImgSrc}
-                        alt="Goal"
-                        style={styles.cellImage}
-                      />
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-          <p style={styles.caption}>Click cells to edit the maze.</p>
-        </div>
-
-        <div style={styles.section}>
-          <h3 style={styles.subheading}>Matrix Output (0 = path, 1 = wall)</h3>
-          <pre style={styles.codeBlock}>
-            {JSON.stringify(
-              {
-                matrix,
-                start,
-                end,
-              },
-              null,
-              2
-            )}
-          </pre>
-        </div>
+            return (
+              <div
+                key={`${r}-${c}`}
+                onClick={() => handleCellClick(r, c)}
+                style={{
+                  ...styles.cell,
+                  background: cell === 1 ? "#020617" : "#e5e7eb",
+                }}
+              >
+                {isStart && characterImg && (
+                  <img src={characterImg} style={styles.cellImg} />
+                )}
+                {isEnd && endImg && (
+                  <img src={endImg} style={styles.cellImg} />
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
 };
 
-// Simple inline styles to keep it self-contained
-const styles: { [key: string]: React.CSSProperties } = {
+export default MazeConfigurator;
+
+/* Styles */
+const styles: Record<string, React.CSSProperties> = {
   container: {
     display: "flex",
-    gap: "24px",
-    padding: "16px",
-    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+    gap: 20,
+    padding: 20,
+    fontFamily: "sans-serif",
   },
   sidebar: {
-    width: "260px",
-    borderRadius: "16px",
-    padding: "16px",
-    border: "1px solid #e2e8f0",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
-    background: "#ffffff",
-  },
-  mainArea: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-  },
-  heading: {
-    fontSize: "18px",
-    margin: "0 0 12px",
-  },
-  subheading: {
-    fontSize: "14px",
-    margin: "0 0 8px",
-  },
-  section: {
-    marginTop: "16px",
-  },
-  toolsRow: {
-    display: "flex",
-    gap: "8px",
-    marginBottom: "8px",
-  },
-  button: {
-    flex: 1,
-    padding: "6px 8px",
-    borderRadius: "999px",
-    border: "1px solid #cbd5f5",
-    background: "#f8fafc",
-    fontSize: "12px",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  },
-  buttonActive: {
-    background: "#2563eb",
-    color: "#ffffff",
-    borderColor: "#1d4ed8",
-  },
-  primaryButton: {
-    width: "100%",
-    padding: "8px 12px",
-    borderRadius: "999px",
-    border: "none",
-    background: "#2563eb",
-    color: "#ffffff",
-    fontSize: "13px",
-    cursor: "pointer",
-    marginTop: "8px",
-  },
-  secondaryButton: {
-    width: "100%",
-    padding: "8px 12px",
-    borderRadius: "999px",
-    border: "1px solid #e2e8f0",
-    background: "#f8fafc",
-    fontSize: "13px",
-    cursor: "pointer",
-  },
-  infoText: {
-    fontSize: "13px",
-    margin: "4px 0",
-  },
-  gridWrapper: {
-    borderRadius: "16px",
-    border: "1px solid #e2e8f0",
-    padding: "12px",
-    background: "#ffffff",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
-    display: "inline-block",
+    width: 300,
+    padding: 16,
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
   },
   grid: {
     display: "grid",
-    width: "360px",
-    height: "360px",
-    gap: "2px",
-    background: "#cbd5f5",
-    padding: "2px",
-    borderRadius: "12px",
+    gridTemplateColumns: "repeat(10, 36px)",
+    gridTemplateRows: "repeat(10, 36px)",
+    gap: 2,
   },
   cell: {
-    position: "relative",
-    borderRadius: "6px",
+    width: 36,
+    height: 36,
+    borderRadius: 6,
     cursor: "pointer",
-    overflow: "hidden",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "10px",
-    userSelect: "none",
   },
-  wallCell: {
-    background: "#1e293b",
-  },
-  pathCell: {
-    background: "#e5e7eb",
-  },
-  startCell: {
-    outline: "2px solid #22c55e",
-    boxShadow: "0 0 0 1px #16a34a inset",
-  },
-  endCell: {
-    outline: "2px solid #f97316",
-    boxShadow: "0 0 0 1px #ea580c inset",
-  },
-  cellImage: {
-    width: "70%",
-    height: "70%",
-    objectFit: "contain",
+  cellImg: {
+    width: "75%",
+    height: "75%",
     pointerEvents: "none",
+    objectFit: "contain",
   },
-  caption: {
-    fontSize: "12px",
-    marginTop: "8px",
-    color: "#6b7280",
+  button: {
+    width: "100%",
+    marginBottom: 6,
+    padding: 6,
+    borderRadius: 999,
+    border: "none",
+    cursor: "pointer",
   },
-  codeBlock: {
-    fontSize: "11px",
-    background: "#0f172a",
+  preview: {
+    width: 60,
+    height: 60,
+    objectFit: "contain",
+    marginTop: 6,
+    display: "block",
+  },
+  code: {
+    fontSize: 10,
+    background: "#020617",
     color: "#e5e7eb",
-    padding: "12px",
-    borderRadius: "12px",
-    maxHeight: "220px",
+    padding: 10,
+    borderRadius: 8,
+    maxHeight: 200,
     overflow: "auto",
   },
 };
-
-export default MazeConfigurator;
