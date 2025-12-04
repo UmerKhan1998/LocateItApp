@@ -2,8 +2,7 @@ import React, { useState } from "react";
 
 const TARGET_SIZE = 300;
 
-const ImageToKaabaSvg: React.FC = () => {
-  const [resizedImageUrl, setResizedImageUrl] = useState<string | null>(null);
+const ImageToSvg300: React.FC = () => {
   const [svgString, setSvgString] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +21,7 @@ const ImageToKaabaSvg: React.FC = () => {
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        // Create canvas and resize to 300x300
+        // Resize to 300x300 using canvas
         const canvas = document.createElement("canvas");
         canvas.width = TARGET_SIZE;
         canvas.height = TARGET_SIZE;
@@ -33,7 +32,7 @@ const ImageToKaabaSvg: React.FC = () => {
           return;
         }
 
-        // Cover mode: scale image to fill 300x300 (like CSS background-size: cover)
+        // "Cover" behavior (like CSS background-size: cover)
         const scale = Math.max(
           TARGET_SIZE / img.width,
           TARGET_SIZE / img.height
@@ -47,8 +46,8 @@ const ImageToKaabaSvg: React.FC = () => {
         ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 
         const dataUrl = canvas.toDataURL("image/png");
-        setResizedImageUrl(dataUrl);
-        setSvgString(buildKaabaSvg(dataUrl));
+        const svg = buildSvg(dataUrl);
+        setSvgString(svg);
       };
 
       img.onerror = () => {
@@ -65,36 +64,31 @@ const ImageToKaabaSvg: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const buildKaabaSvg = (imageDataUrl: string): string => {
-    // 300x300 SVG that uses your Kaaba paths, with the resized image as a background
+  const buildSvg = (imageDataUrl: string): string => {
+    // Same format as your sample: 300x300 SVG, viewBox 0 0 300 300, fill="none"
+    // but instead of paths, we just embed the resized image.
     return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${TARGET_SIZE}" height="${TARGET_SIZE}" viewBox="0 0 300 300" fill="none">
-  <!-- Background image (resized to 300x300) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300" fill="none">
   <image href="${imageDataUrl}" x="0" y="0" width="300" height="300" />
-
-  <!-- Base Kaaba Body -->
-  <path id="kaaba-body" d="M50 100 L200 60 L250 100 L250 220 L50 260 L50 100" stroke="black" stroke-width="2" fill="#F0F0F0"/>
-
-  <!-- Black Cloth (Kiswah) Front -->
-  <path id="kiswah-front" d="M50 100 L200 60 L200 180 L50 220 L50 100" stroke="black" stroke-width="2" fill="#E0E0E0"/>
-
-  <!-- Black Cloth (Kiswah) Side -->
-  <path id="kiswah-side" d="M200 60 L250 100 L250 220 L200 180 L200 60" stroke="black" stroke-width="2" fill="#DADADA"/>
-
-  <!-- Golden Band (Front) -->
-  <path id="gold-band-front" d="M60 130 L190 95 L190 110 L60 145 L60 130" stroke="black" stroke-width="1.5" fill="#FFF5CC"/>
-
-  <!-- Golden Band (Side) -->
-  <path id="gold-band-side" d="M190 95 L240 130 L240 145 L190 110 L190 95" stroke="black" stroke-width="1.5" fill="#FFF0AA"/>
-
-  <!-- Door -->
-  <path id="door" d="M90 160 L140 148 L140 200 L90 212 L90 160" stroke="black" stroke-width="2" fill="#F8E6A0"/>
 </svg>`;
+  };
+
+  const downloadSvg = () => {
+    if (!svgString) return;
+    const blob = new Blob([svgString], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "image-300x300.svg";
+    a.click();
+
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", fontFamily: "sans-serif" }}>
-      <h2>Image → 300x300 + Kaaba SVG</h2>
+      <h2>Convert Image → 300×300 SVG</h2>
 
       <input
         type="file"
@@ -109,28 +103,16 @@ const ImageToKaabaSvg: React.FC = () => {
         </p>
       )}
 
-      {resizedImageUrl && (
-        <div style={{ marginTop: 24 }}>
-          <h3>Resized 300x300 Preview (PNG)</h3>
-          <img
-            src={resizedImageUrl}
-            alt="Resized preview"
-            width={TARGET_SIZE}
-            height={TARGET_SIZE}
-            style={{ border: "1px solid #ccc" }}
-          />
-        </div>
-      )}
-
       {svgString && (
         <div style={{ marginTop: 24 }}>
-          <h3>Kaaba SVG Preview (300x300)</h3>
+          <h3>SVG Preview</h3>
           <div
             style={{
               border: "1px solid #ccc",
               width: TARGET_SIZE,
               height: TARGET_SIZE,
             }}
+            // This renders the generated SVG
             dangerouslySetInnerHTML={{ __html: svgString }}
           />
 
@@ -145,10 +127,22 @@ const ImageToKaabaSvg: React.FC = () => {
               fontSize: 12,
             }}
           />
+
+          <button
+            type="button"
+            onClick={downloadSvg}
+            style={{
+              marginTop: 12,
+              padding: "8px 16px",
+              cursor: "pointer",
+            }}
+          >
+            Download SVG
+          </button>
         </div>
       )}
     </div>
   );
 };
 
-export default ImageToKaabaSvg;
+export default ImageToSvg300;
