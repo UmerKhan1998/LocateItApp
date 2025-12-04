@@ -1,119 +1,134 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 
-export interface KaabaLineChunksProps {
-  width?: number;
-  height?: number;
+export default function SvgRegionFillTool() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // line chunks you can recolor
-  midBandColor?: string;     // the yellow band region in your screenshot
-  topBandColor?: string;     // optional extra example
-}
+  const [baseSvg, setBaseSvg] = useState<string>("");
+  const [fillRect, setFillRect] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
 
-const KaabaLineChunks: React.FC<KaabaLineChunksProps> = ({
-  width = 300,
-  height = 300,
-  midBandColor = "#FFD54F",   // default: yellow
-  topBandColor = "#000000",   // default: black
-}) => {
+  const [fillColor, setFillColor] = useState("#FFD700");
+
+  // ====== LOAD SVG FILE ======
+  const handleFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setBaseSvg(reader.result as string);
+    reader.readAsText(file);
+  };
+
+  // ====== HANDLE SVG CLICK (DEFINE REGION) ======
+  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * 300);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * 300);
+
+    // Fixed-size region (safe + predictable)
+    setFillRect({ x: x - 40, y: y - 30, w: 80, h: 60 });
+  };
+
+  // ====== FINAL SVG OUTPUT ======
+  const finalSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+
+  ${
+    fillRect
+      ? `<rect
+          id="region-fill"
+          x="${fillRect.x}"
+          y="${fillRect.y}"
+          width="${fillRect.w}"
+          height="${fillRect.h}"
+          fill="${fillColor}"
+          stroke="none"
+        />`
+      : ""
+  }
+
+  <!-- ORIGINAL SVG (LINES ON TOP) -->
+  ${baseSvg}
+
+</svg>
+`;
+
+  const downloadSvg = () => {
+    const blob = new Blob([finalSvg], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "final-colored.svg";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 300 300"
-      width={width}
-      height={height}
-    >
-      {/* ==================== BASE OUTLINES (always black) ==================== */}
+    <div style={{ padding: 20, fontFamily: "sans-serif" }}>
+      <h2>SVG Region Fill Tool (FULL VERSION)</h2>
 
-      {/* top outline */}
-      <path
-        d="M70 60 L230 60 L280 90 L120 90 Z"
-        fill="none"
-        stroke="black"
-        strokeWidth={4}
-        strokeLinejoin="round"
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".svg"
+        onChange={(e) => e.target.files && handleFile(e.target.files[0])}
       />
 
-      {/* left face outline */}
-      <path
-        d="M70 60 L120 90 L120 240 L70 210 Z"
-        fill="none"
-        stroke="black"
-        strokeWidth={4}
-        strokeLinejoin="round"
-      />
+      <p>
+        ✅ Click on SVG to select fill area <br />
+        ✅ Fill is applied UNDER outlines <br />
+        ✅ Lines stay black
+      </p>
 
-      {/* right/front face outline */}
-      <path
-        d="M120 90 L280 90 L280 240 L120 240 Z"
-        fill="none"
-        stroke="black"
-        strokeWidth={4}
-        strokeLinejoin="round"
-      />
+      <label>
+        Fill Color:
+        <input
+          type="color"
+          value={fillColor}
+          onChange={(e) => setFillColor(e.target.value)}
+        />
+      </label>
 
-      {/* inner panel outlines etc… (kept simple here) */}
-      <rect
-        x={135}
-        y={185}
-        width={40}
-        height={55}
-        fill="none"
-        stroke="black"
-        strokeWidth={4}
-      />
-
-      {/* ================= LINE CHUNK: TOP BAND (stroke only) ================= */}
-
-      {/* this band goes around the cube; recolor with topBandColor */}
-      <g
-        id="kaaba-top-band"
-        fill="none"
-        stroke={topBandColor}
-        strokeWidth={4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
+      <div
+        style={{
+          border: "1px solid #ccc",
+          width: 300,
+          height: 300,
+          marginTop: 10,
+        }}
       >
-        {/* front band segment */}
-        <path d="M120 115 H280" />
-        {/* left band segment */}
-        <path d="M70 105 L120 115" />
-      </g>
+        {baseSvg && (
+          <svg
+            viewBox="0 0 300 300"
+            width="300"
+            height="300"
+            onClick={handleSvgClick}
+            dangerouslySetInnerHTML={{
+              __html: `
+                ${
+                  fillRect
+                    ? `<rect x="${fillRect.x}" y="${fillRect.y}"
+                             width="${fillRect.w}" height="${fillRect.h}"
+                             fill="${fillColor}" opacity="0.6" />`
+                    : ""
+                }
+                ${baseSvg}
+              `,
+            }}
+          />
+        )}
+      </div>
 
-      {/* ========== LINE CHUNK: MIDDLE BAND (yellow region in screenshot) ===== */}
+      <h3>Final SVG Output</h3>
+      <textarea
+        rows={10}
+        style={{ width: "100%" }}
+        value={finalSvg}
+        readOnly
+      />
 
-      {/* one group that you recolor; everything inside uses midBandColor */}
-      <g
-        id="kaaba-mid-band"
-        fill="none"
-        stroke={midBandColor}
-        strokeWidth={5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {/* front middle band outline (closed rectangle) */}
-        <path d="M150 140 H260 V165 H150 Z" />
-
-        {/* short segments on left/right that belong to same color chunk */}
-        <path d="M120 145 H145" />
-        <path d="M260 145 H275" />
-      </g>
-
-      {/* ==================== OTHER DETAIL LINES (black) ===================== */}
-
-      {/* small dashes that stay black */}
-      <g
-        id="kaaba-dashes"
-        fill="none"
-        stroke="black"
-        strokeWidth={4}
-        strokeLinecap="round"
-      >
-        <path d="M135 170 H155" />
-        <path d="M170 170 H190" />
-        <path d="M205 170 H225" />
-      </g>
-    </svg>
+      <button onClick={downloadSvg}>Download SVG</button>
+    </div>
   );
-};
-
-export default KaabaLineChunks;
+}
