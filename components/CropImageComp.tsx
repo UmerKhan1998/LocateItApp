@@ -214,4 +214,3 @@ const ImageToSvgConverter: React.FC = () => {
 };
 
 export default ImageToSvgConverter;
-  
