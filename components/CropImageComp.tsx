@@ -1,219 +1,154 @@
 import React, { useState } from "react";
 
-type CellValue = 0 | 1;
-type Tool = "wall" | "start" | "end" | "erase";
+const TARGET_SIZE = 300;
 
-interface Position {
-  row: number;
-  col: number;
-}
+const ImageToKaabaSvg: React.FC = () => {
+  const [resizedImageUrl, setResizedImageUrl] = useState<string | null>(null);
+  const [svgString, setSvgString] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-const GRID_SIZE = 10;
-
-const MazeConfigurator: React.FC = () => {
-  const [matrix, setMatrix] = useState<CellValue[][]>(
-    Array.from({ length: GRID_SIZE }, () =>
-      Array.from({ length: GRID_SIZE }, () => 0)
-    )
-  );
-
-  const [tool, setTool] = useState<Tool>("wall");
-  const [start, setStart] = useState<Position | null>(null);
-  const [end, setEnd] = useState<Position | null>(null);
-
-  const [characterImg, setCharacterImg] = useState<string | null>(null);
-  const [endImg, setEndImg] = useState<string | null>(null);
-
-  // image upload handler
-  const handleImageUpload = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    type: "character" | "end"
-  ) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file (JPG, PNG, etc.).");
+      return;
+    }
+
+    setError(null);
+
     const reader = new FileReader();
     reader.onload = () => {
-      if (type === "character") setCharacterImg(reader.result as string);
-      else setEndImg(reader.result as string);
+      const img = new Image();
+      img.onload = () => {
+        // Create canvas and resize to 300x300
+        const canvas = document.createElement("canvas");
+        canvas.width = TARGET_SIZE;
+        canvas.height = TARGET_SIZE;
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          setError("Could not get canvas context.");
+          return;
+        }
+
+        // Cover mode: scale image to fill 300x300 (like CSS background-size: cover)
+        const scale = Math.max(
+          TARGET_SIZE / img.width,
+          TARGET_SIZE / img.height
+        );
+        const drawWidth = img.width * scale;
+        const drawHeight = img.height * scale;
+        const offsetX = (TARGET_SIZE - drawWidth) / 2;
+        const offsetY = (TARGET_SIZE - drawHeight) / 2;
+
+        ctx.clearRect(0, 0, TARGET_SIZE, TARGET_SIZE);
+        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+
+        const dataUrl = canvas.toDataURL("image/png");
+        setResizedImageUrl(dataUrl);
+        setSvgString(buildKaabaSvg(dataUrl));
+      };
+
+      img.onerror = () => {
+        setError("Could not load image.");
+      };
+
+      img.src = reader.result as string;
     };
+
+    reader.onerror = () => {
+      setError("Could not read file.");
+    };
+
     reader.readAsDataURL(file);
   };
 
-  const handleCellClick = (row: number, col: number) => {
-    setMatrix((prev) => {
-      const copy = prev.map((r) => [...r]);
+  const buildKaabaSvg = (imageDataUrl: string): string => {
+    // 300x300 SVG that uses your Kaaba paths, with the resized image as a background
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${TARGET_SIZE}" height="${TARGET_SIZE}" viewBox="0 0 300 300" fill="none">
+  <!-- Background image (resized to 300x300) -->
+  <image href="${imageDataUrl}" x="0" y="0" width="300" height="300" />
 
-      if (tool === "wall") {
-        copy[row][col] = copy[row][col] === 1 ? 0 : 1;
-      } else if (tool === "erase") {
-        copy[row][col] = 0;
-        if (start?.row === row && start.col === col) setStart(null);
-        if (end?.row === row && end.col === col) setEnd(null);
-      } else if (tool === "start") {
-        copy[row][col] = 0;
-        setStart({ row, col });
-      } else if (tool === "end") {
-        copy[row][col] = 0;
-        setEnd({ row, col });
-      }
-      return copy;
-    });
+  <!-- Base Kaaba Body -->
+  <path id="kaaba-body" d="M50 100 L200 60 L250 100 L250 220 L50 260 L50 100" stroke="black" stroke-width="2" fill="#F0F0F0"/>
+
+  <!-- Black Cloth (Kiswah) Front -->
+  <path id="kiswah-front" d="M50 100 L200 60 L200 180 L50 220 L50 100" stroke="black" stroke-width="2" fill="#E0E0E0"/>
+
+  <!-- Black Cloth (Kiswah) Side -->
+  <path id="kiswah-side" d="M200 60 L250 100 L250 220 L200 180 L200 60" stroke="black" stroke-width="2" fill="#DADADA"/>
+
+  <!-- Golden Band (Front) -->
+  <path id="gold-band-front" d="M60 130 L190 95 L190 110 L60 145 L60 130" stroke="black" stroke-width="1.5" fill="#FFF5CC"/>
+
+  <!-- Golden Band (Side) -->
+  <path id="gold-band-side" d="M190 95 L240 130 L240 145 L190 110 L190 95" stroke="black" stroke-width="1.5" fill="#FFF0AA"/>
+
+  <!-- Door -->
+  <path id="door" d="M90 160 L140 148 L140 200 L90 212 L90 160" stroke="black" stroke-width="2" fill="#F8E6A0"/>
+</svg>`;
   };
 
   return (
-    <div style={styles.container}>
-      {/* Sidebar */}
-      <div style={styles.sidebar}>
-        <h2>Maze Admin</h2>
+    <div style={{ maxWidth: 600, margin: "0 auto", fontFamily: "sans-serif" }}>
+      <h2>Image → 300x300 + Kaaba SVG</h2>
 
-        <h4>Tools</h4>
-        {["wall", "erase", "start", "end"].map((t) => (
-          <button
-            key={t}
+      <input
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        style={{ marginBottom: 16 }}
+      />
+
+      {error && (
+        <p style={{ color: "red", marginTop: 8 }}>
+          {error}
+        </p>
+      )}
+
+      {resizedImageUrl && (
+        <div style={{ marginTop: 24 }}>
+          <h3>Resized 300x300 Preview (PNG)</h3>
+          <img
+            src={resizedImageUrl}
+            alt="Resized preview"
+            width={TARGET_SIZE}
+            height={TARGET_SIZE}
+            style={{ border: "1px solid #ccc" }}
+          />
+        </div>
+      )}
+
+      {svgString && (
+        <div style={{ marginTop: 24 }}>
+          <h3>Kaaba SVG Preview (300x300)</h3>
+          <div
             style={{
-              ...styles.button,
-              background: tool === t ? "#2563eb" : "#f1f5f9",
-              color: tool === t ? "white" : "black",
+              border: "1px solid #ccc",
+              width: TARGET_SIZE,
+              height: TARGET_SIZE,
             }}
-            onClick={() => setTool(t as Tool)}
-          >
-            {t.toUpperCase()}
-          </button>
-        ))}
-
-        <h4>Upload Images</h4>
-
-        <label>
-          Character Image
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => handleImageUpload(e, "character")}
+            dangerouslySetInnerHTML={{ __html: svgString }}
           />
-        </label>
 
-        {characterImg && (
-          <img src={characterImg} style={styles.preview} />
-        )}
-
-        <label>
-          End Point Image
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => handleImageUpload(e, "end")}
+          <h3 style={{ marginTop: 16 }}>SVG Code</h3>
+          <textarea
+            value={svgString}
+            readOnly
+            style={{
+              width: "100%",
+              height: 220,
+              fontFamily: "monospace",
+              fontSize: 12,
+            }}
           />
-        </label>
-
-        {endImg && <img src={endImg} style={styles.preview} />}
-
-        <h4>Export</h4>
-        <pre style={styles.code}>
-{JSON.stringify(
-  {
-    matrix,
-    start,
-    end,
-    characterImg,
-    endImg,
-  },
-  null,
-  2
-)}
-        </pre>
-      </div>
-
-      {/* Grid */}
-      <div style={styles.grid}>
-        {matrix.map((row, r) =>
-          row.map((cell, c) => {
-            const isStart = start?.row === r && start.col === c;
-            const isEnd = end?.row === r && end.col === c;
-
-            return (
-              <div
-                key={`${r}-${c}`}
-                onClick={() => handleCellClick(r, c)}
-                style={{
-                  ...styles.cell,
-                  background: cell === 1 ? "#020617" : "#e5e7eb",
-                }}
-              >
-                {isStart && characterImg && (
-                  <img src={characterImg} style={styles.cellImg} />
-                )}
-                {isEnd && endImg && (
-                  <img src={endImg} style={styles.cellImg} />
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default MazeConfigurator;
-
-/* Styles */
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    gap: 20,
-    padding: 20,
-    fontFamily: "sans-serif",
-  },
-  sidebar: {
-    width: 300,
-    padding: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(10, 36px)",
-    gridTemplateRows: "repeat(10, 36px)",
-    gap: 2,
-  },
-  cell: {
-    width: 36,
-    height: 36,
-    borderRadius: 6,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cellImg: {
-    width: "75%",
-    height: "75%",
-    pointerEvents: "none",
-    objectFit: "contain",
-  },
-  button: {
-    width: "100%",
-    marginBottom: 6,
-    padding: 6,
-    borderRadius: 999,
-    border: "none",
-    cursor: "pointer",
-  },
-  preview: {
-    width: 60,
-    height: 60,
-    objectFit: "contain",
-    marginTop: 6,
-    display: "block",
-  },
-  code: {
-    fontSize: 10,
-    background: "#020617",
-    color: "#e5e7eb",
-    padding: 10,
-    borderRadius: 8,
-    maxHeight: 200,
-    overflow: "auto",
-  },
-};
+export default ImageToKaabaSvg;
