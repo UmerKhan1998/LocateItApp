@@ -1,24 +1,51 @@
-import React, { useState, useRef, ChangeEvent } from "react";
-
-type Chunk = {
-  baseId: string;
-  d: string;
-  outlineStroke: string;
-  outlineStrokeWidth: string;
-  fill: string; // current fill color (inside area)
-};
+import React, {
+  useState,
+  useRef,
+  ChangeEvent,
+  CSSProperties,
+  FC,
+} from "react";
 
 const DEFAULT_SIZE = 300;
 
-const SvgPathFillEditor: React.FC = () => {
+type RegionChunk = {
+  baseId: string;
+  d: string;
+  stroke: string;
+  strokeWidth: string;
+  fill: string; // current fill color
+};
+
+type OutlineOnlyPath = {
+  id: string;
+  d: string;
+  stroke: string;
+  strokeWidth: string;
+};
+
+const thStyle: CSSProperties = {
+  borderBottom: "1px solid #ccc",
+  textAlign: "left",
+  padding: "0.25rem 0.5rem",
+};
+
+const tdStyle: CSSProperties = {
+  borderBottom: "1px solid #eee",
+  padding: "0.25rem 0.5rem",
+};
+
+const SvgColorRegionEditor: FC = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [viewBox, setViewBox] = useState<string>(`0 0 ${DEFAULT_SIZE} ${DEFAULT_SIZE}`);
-  const [chunks, setChunks] = useState<Chunk[]>([]);
+  const [viewBox, setViewBox] = useState<string>(
+    `0 0 ${DEFAULT_SIZE} ${DEFAULT_SIZE}`
+  );
+  const [regions, setRegions] = useState<RegionChunk[]>([]);
+  const [otherPaths, setOtherPaths] = useState<OutlineOnlyPath[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // ====== FILE UPLOAD ======
+  // ============= FILE UPLOAD =============
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -33,9 +60,10 @@ const SvgPathFillEditor: React.FC = () => {
     reader.onload = (ev) => {
       const text = String(ev.target?.result || "");
       try {
-        const { viewBox, chunks } = parseSvgToChunks(text);
+        const { viewBox, regions, otherPaths } = parseSvg(text);
         setViewBox(viewBox);
-        setChunks(chunks);
+        setRegions(regions);
+        setOtherPaths(otherPaths);
         setSelectedId(null);
       } catch (err) {
         console.error(err);
@@ -45,8 +73,12 @@ const SvgPathFillEditor: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // ====== PARSER: SVG TEXT -> CHUNKS ======
-  function parseSvgToChunks(svgText: string): { viewBox: string; chunks: Chunk[] } {
+  // ============= PARSE SVG INTO REGIONS + OTHER PATHS =============
+  function parseSvg(svgText: string): {
+    viewBox: string;
+    regions: RegionChunk[];
+    otherPaths: OutlineOnlyPath[];
+  } {
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgText, "image/svg+xml");
 
@@ -63,88 +95,120 @@ const SvgPathFillEditor: React.FC = () => {
     const vb = svgRoot.getAttribute("viewBox");
     const width = svgRoot.getAttribute("width") || String(DEFAULT_SIZE);
     const height = svgRoot.getAttribute("height") || String(DEFAULT_SIZE);
-
     const finalViewBox = vb || `0 0 ${width} ${height}`;
 
-    const pathEls = Array.from(svgRoot.querySelectorAll("path"));
-    if (pathEls.length === 0) {
-      throw new Error("No <path> elements found in SVG. Please upload path-based SVG.");
+    const paths = Array.from(svgRoot.querySelectorAll("path"));
+    if (paths.length === 0) {
+      throw new Error("No <path> elements found in SVG.");
     }
 
-    const chunks: Chunk[] = pathEls.map((p, index) => {
+    const regions: RegionChunk[] = [];
+    const others: OutlineOnlyPath[] = [];
+
+    paths.forEach((p, index) => {
       const d = p.getAttribute("d") || "";
-      const id = p.getAttribute("id") || `chunk-${index + 1}`;
+      if (!d) return;
+
+      const id = p.getAttribute("id") || `path-${index + 1}`;
       const stroke = p.getAttribute("stroke") || "black";
       const strokeWidth = p.getAttribute("stroke-width") || "1.5";
-      const fill = p.getAttribute("fill") || "none";
+      const fillAttr = p.getAttribute("fill");
 
-      return {
-        baseId: id,
-        d,
-        outlineStroke: stroke,
-        outlineStrokeWidth: strokeWidth,
-        // default fill: if none, use transparent; you can change this
-        fill: fill === "none" ? "#00000000" : fill,
-      };
+      // crude "is closed" detection: path ends with Z or z
+      const isClosed = /z\s*$/i.test(d.trim());
+
+      if (isClosed) {
+        // CLOSED PATH → fillable region
+        const defaultFill =
+          fillAttr && fillAttr !== "none" ? fillAttr : "#FFFFFF";
+
+        regions.push({
+          baseId: id,
+          d,
+          stroke,
+          strokeWidth,
+          fill: defaultFill,
+        });
+      } else {
+        // OPEN PATH → outline only, never filled
+        others.push({
+          id,
+          d,
+          stroke,
+          strokeWidth,
+        });
+      }
     });
 
-    return { viewBox: finalViewBox, chunks };
+    return { viewBox: finalViewBox, regions, otherPaths: others };
   }
 
-  // ====== HANDLE COLOR CHANGE FOR SELECTED CHUNK ======
+  // ============= HANDLE COLOR CHANGE =============
   const handleColorChange = (e: ChangeEvent<HTMLInputElement>) => {
     const color = e.target.value;
     if (!selectedId) return;
-
-    setChunks((prev) =>
-      prev.map((c) =>
-        c.baseId === selectedId
+    setRegions((prev) =>
+      prev.map((r) =>
+        r.baseId === selectedId
           ? {
-              ...c,
+              ...r,
               fill: color,
             }
-          : c
+          : r
       )
     );
   };
 
-  // ====== BUILD FINAL SVG STRING ======
+  // ============= BUILD FINAL SVG (FOR EXPORT) =============
   const buildFinalSvg = (): string => {
-    const pathLines = chunks
-      .map((c) => {
-        const fillId = `${c.baseId}-fill`;
-        const outlineId = `${c.baseId}-outline`;
+    const regionLines = regions
+      .map((r) => {
+        const fillId = `${r.baseId}-fill`;
+        const outlineId = `${r.baseId}-outline`;
 
         return [
-          `  <!-- ${c.baseId} -->`,
-          `  <path id="${fillId}" d="${c.d}" fill="${c.fill}" stroke="none" />`,
-          `  <path id="${outlineId}" d="${c.d}" fill="none" stroke="${c.outlineStroke}" stroke-width="${c.outlineStrokeWidth}" stroke-linejoin="round" />`,
+          `  <!-- region: ${r.baseId} -->`,
+          `  <path id="${fillId}" d="${r.d}" fill="${r.fill}" stroke="none" />`,
+          `  <path id="${outlineId}" d="${r.d}" fill="none" stroke="${r.stroke}" stroke-width="${r.strokeWidth}" stroke-linejoin="round" />`,
         ].join("\n");
       })
       .join("\n");
 
+    const otherLines = otherPaths
+      .map(
+        (p) =>
+          `  <path id="${p.id}" d="${p.d}" fill="none" stroke="${p.stroke}" stroke-width="${p.strokeWidth}" stroke-linejoin="round" />`
+      )
+      .join("\n");
+
     return [
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
-      pathLines,
+      regionLines,
+      otherLines,
       `</svg>`,
     ].join("\n");
   };
 
   const finalSvg = buildFinalSvg();
 
+  // ============= DOWNLOAD HANDLER =============
   const handleDownload = () => {
-    const blob = new Blob([finalSvg], { type: "image/svg+xml;charset=utf-8" });
+    if (!regions.length && !otherPaths.length) return;
+
+    const blob = new Blob([finalSvg], {
+      type: "image/svg+xml;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "colored-chunks.svg";
+    a.download = "colored-regions.svg";
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   };
 
-  // ====== RENDER ======
+  // ============= RENDER =============
   return (
     <div
       style={{
@@ -154,12 +218,15 @@ const SvgPathFillEditor: React.FC = () => {
         padding: "0 1rem",
       }}
     >
-      <h1>SVG Path Fill Editor</h1>
+      <h1>SVG Region Color Editor (fill under border)</h1>
 
       <p>
-        1. Upload a path-based SVG (like your Kaaba line drawing).<br />
-        2. Click any chunk (path) in the preview.<br />
-        3. Change its <strong>fill</strong> color – outline stays black.
+        <strong>Important:</strong> Only <b>closed paths</b> (paths whose{" "}
+        <code>d</code> ends with <code>Z</code>) are treated as colorable
+        regions. Open paths remain border lines only.
+        <br />
+        Upload a Kaaba line SVG where each panel you want to fill is a closed
+        shape.
       </p>
 
       <div style={{ marginBottom: "1rem" }}>
@@ -185,7 +252,6 @@ const SvgPathFillEditor: React.FC = () => {
         </div>
       )}
 
-      {/* Controls for selected chunk */}
       {selectedId && (
         <div
           style={{
@@ -199,14 +265,14 @@ const SvgPathFillEditor: React.FC = () => {
           }}
         >
           <span>
-            Selected chunk: <code>{selectedId}</code>
+            Selected region: <code>{selectedId}</code>
           </span>
           <input type="color" onChange={handleColorChange} />
         </div>
       )}
 
-      {/* Preview */}
       <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+        {/* Preview */}
         <div>
           <h2>Preview</h2>
           <div
@@ -220,37 +286,41 @@ const SvgPathFillEditor: React.FC = () => {
               background: "#fafafa",
             }}
           >
-            {chunks.length ? (
+            {regions.length || otherPaths.length ? (
               <svg
                 viewBox={viewBox}
                 width={300}
                 height={300}
                 style={{ cursor: "pointer" }}
               >
-                {chunks.map((c) => {
-                  const isSelected = c.baseId === selectedId;
+                {/* fill regions (fill + outline) */}
+                {regions.map((r) => {
+                  const selected = r.baseId === selectedId;
                   return (
                     <g
-                      key={c.baseId}
-                      onClick={() => setSelectedId(c.baseId)}
+                      key={r.baseId}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedId(r.baseId);
+                      }}
                     >
-                      {/* Fill under the outline */}
-                      <path d={c.d} fill={c.fill} stroke="none" />
-                      {/* Border / outline */}
+                      {/* fill under outline */}
+                      <path d={r.d} fill={r.fill} stroke="none" />
+                      {/* outline */}
                       <path
-                        d={c.d}
+                        d={r.d}
                         fill="none"
-                        stroke={c.outlineStroke}
-                        strokeWidth={c.outlineStrokeWidth}
+                        stroke={r.stroke}
+                        strokeWidth={r.strokeWidth}
                         strokeLinejoin="round"
                       />
-                      {/* Optional highlight if selected */}
-                      {isSelected && (
+                      {/* highlight if selected */}
+                      {selected && (
                         <path
-                          d={c.d}
+                          d={r.d}
                           fill="none"
-                          stroke="#00BCD4"
-                          strokeWidth={Number(c.outlineStrokeWidth) + 2}
+                          stroke="#00B8D4"
+                          strokeWidth={Number(r.strokeWidth) + 2}
                           strokeLinejoin="round"
                           opacity={0.5}
                         />
@@ -258,6 +328,18 @@ const SvgPathFillEditor: React.FC = () => {
                     </g>
                   );
                 })}
+
+                {/* other outline-only paths */}
+                {otherPaths.map((p) => (
+                  <path
+                    key={p.id}
+                    d={p.d}
+                    fill="none"
+                    stroke={p.stroke}
+                    strokeWidth={p.strokeWidth}
+                    strokeLinejoin="round"
+                  />
+                ))}
               </svg>
             ) : (
               <span style={{ fontSize: 12, color: "#888" }}>
@@ -284,11 +366,12 @@ const SvgPathFillEditor: React.FC = () => {
           />
           <button
             onClick={handleDownload}
-            disabled={!chunks.length}
+            disabled={!regions.length && !otherPaths.length}
             style={{
               marginTop: "0.5rem",
               padding: "0.4rem 0.8rem",
-              cursor: chunks.length ? "pointer" : "not-allowed",
+              cursor:
+                regions.length || otherPaths.length ? "pointer" : "not-allowed",
             }}
           >
             Download SVG
@@ -296,10 +379,10 @@ const SvgPathFillEditor: React.FC = () => {
         </div>
       </div>
 
-      {/* Chunks table for reference */}
-      {chunks.length > 0 && (
+      {/* Regions table */}
+      {regions.length > 0 && (
         <div style={{ marginTop: "2rem" }}>
-          <h2>Path Chunks</h2>
+          <h2>Colorable Regions (closed paths)</h2>
           <table
             style={{
               width: "100%",
@@ -311,36 +394,36 @@ const SvgPathFillEditor: React.FC = () => {
               <tr>
                 <th style={thStyle}>#</th>
                 <th style={thStyle}>Base id</th>
-                <th style={thStyle}>Current fill</th>
+                <th style={thStyle}>Fill</th>
                 <th style={thStyle}>Stroke</th>
                 <th style={thStyle}>Stroke width</th>
               </tr>
             </thead>
             <tbody>
-              {chunks.map((c, i) => (
-                <tr key={c.baseId}>
+              {regions.map((r, i) => (
+                <tr key={r.baseId}>
                   <td style={tdStyle}>{i + 1}</td>
                   <td style={tdStyle}>
-                    <code>{c.baseId}</code>
+                    <code>{r.baseId}</code>
                   </td>
                   <td style={tdStyle}>
-                    <code>{c.fill}</code>
+                    <code>{r.fill}</code>
                   </td>
                   <td style={tdStyle}>
-                    <code>{c.outlineStroke}</code>
+                    <code>{r.stroke}</code>
                   </td>
                   <td style={tdStyle}>
-                    <code>{c.outlineStrokeWidth}</code>
+                    <code>{r.strokeWidth}</code>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p style={{ fontSize: 12, color: "#666", marginTop: "0.5rem" }}>
-            In your mobile app you can also change fills by ids:
-            {"  "}
-            <code>chunk-id-fill</code> (outline id will be{" "}
-            <code>chunk-id-outline</code> in the exported SVG).
+            In your mobile app, you can change the fill of each region by id:
+            this component exports <code>&lt;path&gt;</code>s with ids{" "}
+            <code>region-id-fill</code> (for color) and{" "}
+            <code>region-id-outline</code> (for the fixed border).
           </p>
         </div>
       )}
@@ -348,15 +431,4 @@ const SvgPathFillEditor: React.FC = () => {
   );
 };
 
-const thStyle: React.CSSProperties = {
-  borderBottom: "1px solid #ccc",
-  textAlign: "left",
-  padding: "0.25rem 0.5rem",
-};
-
-const tdStyle: React.CSSProperties = {
-  borderBottom: "1px solid #eee",
-  padding: "0.25rem 0.5rem",
-};
-
-export default SvgPathFillEditor;
+export default SvgColorRegionEditor;
