@@ -1,56 +1,10 @@
 import React, { useState } from "react";
-import ImageTracer from "imagetracerjs";
 
-/*
-  Use higher vectorization resolution to avoid pixelated paths.
-  You can try 600, 700, or 800.
-*/
-const MAX_SIZE = 600;
+// imagetracerjs does not ship great TypeScript types, so we just tell TS it's "any"
+import ImageTracer from "imagetracerjs";
+// or, if you prefer global script: declare const ImageTracer: any;
 
 const defaultSvgPlaceholder = "<svg><!-- SVG will appear here --></svg>";
-
-/* Resize uploaded image before vectorization */
-const resizeImageToMax = (
-  dataUrl: string,
-  maxSize: number
-): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-
-    img.onload = () => {
-      const scale = Math.min(
-        maxSize / img.width,
-        maxSize / img.height,
-        1 // never upscale
-      );
-
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject("Canvas context unavailable");
-        return;
-      }
-
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/png"));
-    };
-
-    img.onerror = () => reject("Failed to load image");
-    img.src = dataUrl;
-  });
-};
-
-/* Ensure SVG always has a viewBox */
-const normalizeSvgViewBox = (svg: string, size: number) => {
-  if (svg.includes("viewBox")) return svg;
-  return svg.replace(
-    "<svg",
-    `<svg viewBox="0 0 ${size} ${size}"`
-  );
-};
 
 const ImageToSvgConverter: React.FC = () => {
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
@@ -58,36 +12,30 @@ const ImageToSvgConverter: React.FC = () => {
   const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     setError(null);
 
     if (!file) return;
 
+    // Only allow images
     if (!file.type.startsWith("image/")) {
-      setError("Please upload a PNG or JPG image");
+      setError("Please upload an image file (PNG/JPG/SVG).");
       return;
     }
 
     const reader = new FileReader();
-
-    reader.onload = async () => {
-      try {
-        const originalDataUrl = reader.result as string;
-        setPreviewSrc(originalDataUrl);
-
-        const resizedDataUrl = await resizeImageToMax(
-          originalDataUrl,
-          MAX_SIZE
-        );
-
-        convertToSvg(resizedDataUrl);
-      } catch {
-        setError("Image resize failed");
-      }
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setPreviewSrc(dataUrl);
+      convertToSvg(dataUrl);
+    };
+    reader.onerror = () => {
+      setError("Could not read file.");
     };
 
-    reader.onerror = () => setError("File reading failed");
     reader.readAsDataURL(file);
   };
 
@@ -95,35 +43,31 @@ const ImageToSvgConverter: React.FC = () => {
     setIsConverting(true);
     setSvgOutput(defaultSvgPlaceholder);
 
+    // imagetracerjs can take a URL or dataURL
+    const options = {
+      // tweak as needed – fewer colors & paths for coloring-book style
+      numberofcolors: 8,
+      strokewidth: 1,
+      scale: 1,
+      // etc...
+    };
+
     ImageTracer.imageToSVG(
       dataUrl,
-      (svg: string) => {
-        setSvgOutput(normalizeSvgViewBox(svg, MAX_SIZE));
+      (svgString: string) => {
+        setSvgOutput(svgString);
         setIsConverting(false);
       },
-      {
-        // Best for coloring-book style images
-        numberofcolors: 4,
-        strokewidth: 1,
-        scale: 1,
-
-        // Smoothing & quality
-        ltres: 0.5,     // line threshold (lower = more detail)
-        qtres: 0.5,     // curve threshold
-        pathomit: 0,    // keep small shapes
-        roundcoords: 2, // round coords slightly (smooth but not heavy)
-        blur: 0,
-        linefilter: true,
-      }
+      options
     );
   };
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(svgOutput);
-      alert("SVG copied to clipboard");
+      alert("SVG copied to clipboard!");
     } catch {
-      alert("Failed to copy");
+      alert("Could not copy to clipboard.");
     }
   };
 
@@ -133,31 +77,29 @@ const ImageToSvgConverter: React.FC = () => {
         maxWidth: 1200,
         margin: "0 auto",
         padding: 24,
-        fontFamily:
-          "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      <h1>Image → SVG Region Converter (Smooth)</h1>
-
-      <p style={{ color: "#555", marginBottom: 16 }}>
-        Upload clean line-art. The image is resized to a high resolution before
-        vectorization to avoid pixelation. Output is optimized for React Native
-        tap-to-fill coloring.
+      <h1>Image → SVG Region Converter</h1>
+      <p style={{ color: "#555" }}>
+        Upload a high-contrast line-art image (like a coloring page). This will
+        generate SVG paths that you can paste into your React Native app.
       </p>
 
       <div
         style={{
+          marginTop: 16,
           padding: 16,
           borderRadius: 16,
           border: "1px solid #ddd",
           display: "flex",
           gap: 16,
+          alignItems: "flex-start",
           flexWrap: "wrap",
         }}
       >
-        {/* Upload + preview */}
         <div style={{ minWidth: 260 }}>
-          <label style={{ fontWeight: 600 }}>
+          <label style={{ fontWeight: 600, fontSize: 14 }}>
             Upload image
             <input
               type="file"
@@ -168,17 +110,15 @@ const ImageToSvgConverter: React.FC = () => {
           </label>
 
           {error && (
-            <p style={{ color: "red", marginTop: 8 }}>{error}</p>
+            <p style={{ color: "red", marginTop: 8, fontSize: 13 }}>{error}</p>
           )}
 
           {previewSrc && (
-            <>
-              <p style={{ fontSize: 13, marginTop: 12 }}>
-                Original preview:
-              </p>
+            <div style={{ marginTop: 16 }}>
+              <p style={{ fontSize: 13, marginBottom: 8 }}>Original preview:</p>
               <img
                 src={previewSrc}
-                alt="Preview"
+                alt="preview"
                 style={{
                   maxWidth: 260,
                   maxHeight: 260,
@@ -187,30 +127,32 @@ const ImageToSvgConverter: React.FC = () => {
                   objectFit: "contain",
                 }}
               />
-            </>
+            </div>
           )}
         </div>
 
-        {/* SVG output */}
-        <div style={{ flex: 1, minWidth: 320 }}>
+        <div style={{ flex: 1, minWidth: 300 }}>
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: 6,
+              marginBottom: 8,
             }}
           >
             <p style={{ fontSize: 13, margin: 0 }}>
-              {isConverting ? "Vectorizing…" : "SVG Output"}
+              {isConverting
+                ? "Converting to SVG…"
+                : "SVG output (you’ll paste paths into the mobile app):"}
             </p>
             <button
               onClick={handleCopy}
-              disabled={isConverting}
+              disabled={!svgOutput || isConverting}
               style={{
-                padding: "6px 14px",
+                padding: "6px 12px",
                 borderRadius: 999,
                 border: "1px solid #ccc",
+                background: "#fff",
                 cursor: "pointer",
               }}
             >
@@ -221,38 +163,47 @@ const ImageToSvgConverter: React.FC = () => {
           <textarea
             value={svgOutput}
             readOnly
+            spellCheck={false}
             style={{
               width: "100%",
-              minHeight: 320,
+              minHeight: 260,
               fontFamily: "monospace",
               fontSize: 12,
-              padding: 12,
               borderRadius: 12,
+              padding: 12,
               border: "1px solid #ddd",
               resize: "vertical",
+              whiteSpace: "pre",
             }}
           />
 
           <p style={{ fontSize: 12, marginTop: 8, color: "#777" }}>
-            Make sure each colorable region is a separate{" "}
-            <code>&lt;path&gt;</code> with a unique <code>id</code>.
+            Tip: After vectorization, you might want to clean up the SVG (e.g.,
+            in Illustrator, Figma, or an SVG editor) and make sure each region
+            you want to color is a separate <code>&lt;path&gt;</code> with its
+            own <code>id</code>.
           </p>
 
-          {/* SVG preview */}
           <div
             style={{
               marginTop: 16,
-              border: "1px solid #eee",
               borderRadius: 12,
+              border: "1px solid #eee",
               padding: 12,
               background: "#fafafa",
             }}
           >
-            <p style={{ fontSize: 13, marginBottom: 8 }}>
-              SVG Live Preview
-            </p>
+            <p style={{ fontSize: 13, marginBottom: 8 }}>SVG live preview:</p>
             <div
-              style={{ maxHeight: 320, overflow: "auto" }}
+              style={{
+                width: "100%",
+                maxHeight: 300,
+                overflow: "auto",
+                background: "#fff",
+                borderRadius: 8,
+                border: "1px solid #eee",
+              }}
+              // Live render of SVG string
               dangerouslySetInnerHTML={{ __html: svgOutput }}
             />
           </div>
