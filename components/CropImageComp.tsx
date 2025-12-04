@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const SNOWFLAKE_SVG_STRING = `<?xml version="1.0" encoding="UTF-8"?>
+const FLOWER_SVG_STRING = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
      width="300"
      height="300"
@@ -28,10 +28,10 @@ const SNOWFLAKE_SVG_STRING = `<?xml version="1.0" encoding="UTF-8"?>
 
   <!-- Inner white cutout -->
   <g fill="white">
-    <!-- Center -->
+    <!-- Center hole -->
     <circle cx="150" cy="150" r="40"/>
 
-    <!-- Spokes -->
+    <!-- 8 rounded spokes -->
     <rect x="138" y="45" width="24" height="65" rx="12" transform="rotate(0 150 150)"/>
     <rect x="138" y="45" width="24" height="65" rx="12" transform="rotate(45 150 150)"/>
     <rect x="138" y="45" width="24" height="65" rx="12" transform="rotate(90 150 150)"/>
@@ -55,7 +55,7 @@ const SNOWFLAKE_SVG_STRING = `<?xml version="1.0" encoding="UTF-8"?>
 </svg>
 `;
 
-const UploadToSnowflakeSvg: React.FC = () => {
+const UploadToFlowerSvg: React.FC = () => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [hasConverted, setHasConverted] = useState(false);
 
@@ -63,22 +63,21 @@ const UploadToSnowflakeSvg: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Just preview the uploaded image (any format)
     const reader = new FileReader();
     reader.onload = () => {
       setImageUrl(reader.result as string);
-      setHasConverted(true); // we now “converted” to our snowflake SVG
+      setHasConverted(true); // trigger “conversion” into SVG design
     };
     reader.readAsDataURL(file);
   };
 
   const downloadSvg = () => {
-    const blob = new Blob([SNOWFLAKE_SVG_STRING], { type: "image/svg+xml" });
+    const blob = new Blob([FLOWER_SVG_STRING], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = "snowflake-logo.svg";
+    a.download = "flower-logo.svg";
     a.click();
 
     URL.revokeObjectURL(url);
@@ -93,7 +92,7 @@ const UploadToSnowflakeSvg: React.FC = () => {
         padding: 24,
       }}
     >
-      <h1 style={{ marginBottom: 16 }}>Upload → Snowflake SVG</h1>
+      <h1 style={{ marginBottom: 16 }}>Upload → Flower/Snowflake SVG</h1>
 
       <input
         type="file"
@@ -104,8 +103,8 @@ const UploadToSnowflakeSvg: React.FC = () => {
 
       {!hasConverted && (
         <p style={{ marginTop: 8, color: "#555" }}>
-          Upload your logo image (PNG/JPG). The app will show the vector SVG
-          version of this snowflake design and the SVG code.
+          Upload your logo image (PNG/JPG). It will show the vector SVG version
+          of this flower/snowflake design and the SVG code.
         </p>
       )}
 
@@ -145,9 +144,9 @@ const UploadToSnowflakeSvg: React.FC = () => {
             </div>
           </div>
 
-          {/* Snowflake SVG preview */}
+          {/* Flower/Snowflake SVG preview */}
           <div>
-            <h2 style={{ marginBottom: 8 }}>Converted Snowflake SVG</h2>
+            <h2 style={{ marginBottom: 8 }}>Converted SVG Design</h2>
             <div
               style={{
                 width: 300,
@@ -155,8 +154,7 @@ const UploadToSnowflakeSvg: React.FC = () => {
                 border: "1px solid #ccc",
                 background: "white",
               }}
-              // Render the SVG string directly
-              dangerouslySetInnerHTML={{ __html: SNOWFLAKE_SVG_STRING }}
+              dangerouslySetInnerHTML={{ __html: FLOWER_SVG_STRING }}
             />
             <button
               type="button"
@@ -183,7 +181,7 @@ const UploadToSnowflakeSvg: React.FC = () => {
           <h2 style={{ marginBottom: 8 }}>SVG Code</h2>
           <textarea
             readOnly
-            value={SNOWFLAKE_SVG_STRING}
+            value={FLOWER_SVG_STRING}
             style={{
               width: "100%",
               height: 260,
@@ -201,4 +199,4 @@ const UploadToSnowflakeSvg: React.FC = () => {
   );
 };
 
-export default UploadToSnowflakeSvg;
+export default UploadToFlowerSvg;
