@@ -1,17 +1,18 @@
 import React, { useState, ChangeEvent } from "react";
 
-type ColorablePart = {
-  id: string;
-  defaultColor: string;
-  tagName: string;
-};
-
 const CANVAS_SIZE = 300;
 
-const AdminSvgColorable: React.FC = () => {
+type ChunkInfo = {
+  baseId: string;
+  fillId: string;
+  outlineId: string;
+  defaultFill: string;
+};
+
+const SvgChunkConverter: React.FC = () => {
   const [originalSvg, setOriginalSvg] = useState("");
-  const [normalizedSvg, setNormalizedSvg] = useState("");
-  const [colorableParts, setColorableParts] = useState<ColorablePart[]>([]);
+  const [convertedSvg, setConvertedSvg] = useState("");
+  const [chunks, setChunks] = useState<ChunkInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -29,9 +30,9 @@ const AdminSvgColorable: React.FC = () => {
       const text = String(ev.target?.result || "");
       setOriginalSvg(text);
       try {
-        const { svg, parts } = processSvg(text);
-        setNormalizedSvg(svg);
-        setColorableParts(parts);
+        const { svg, chunks } = transformSvg(text);
+        setConvertedSvg(svg);
+        setChunks(chunks);
       } catch (err) {
         console.error(err);
         setError("Failed to parse SVG. Make sure it is valid SVG markup.");
@@ -44,16 +45,16 @@ const AdminSvgColorable: React.FC = () => {
     const value = e.target.value;
     setOriginalSvg(value);
     if (!value.trim()) {
-      setNormalizedSvg("");
-      setColorableParts([]);
+      setConvertedSvg("");
+      setChunks([]);
       setError(null);
       return;
     }
 
     try {
-      const { svg, parts } = processSvg(value);
-      setNormalizedSvg(svg);
-      setColorableParts(parts);
+      const { svg, chunks } = transformSvg(value);
+      setConvertedSvg(svg);
+      setChunks(chunks);
       setError(null);
     } catch (err) {
       console.error(err);
@@ -62,12 +63,14 @@ const AdminSvgColorable: React.FC = () => {
   };
 
   const handleDownload = () => {
-    if (!normalizedSvg) return;
-    const blob = new Blob([normalizedSvg], { type: "image/svg+xml;charset=utf-8" });
+    if (!convertedSvg) return;
+    const blob = new Blob([convertedSvg], {
+      type: "image/svg+xml;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "normalized-300x300.svg";
+    a.download = "chunks-300x300.svg";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -83,11 +86,18 @@ const AdminSvgColorable: React.FC = () => {
         padding: "0 1rem",
       }}
     >
-      <h1>Admin SVG Tool – Outline + Fill Parts (300×300)</h1>
+      <h1>SVG Chunk Converter (paths → fill + outline)</h1>
 
       <p>
-        Rule: <strong>colorable parts use ids ending with <code>-fill</code></strong> (e.g.
-        <code>minaret-1-fill</code>). Those will be filled, and the outline paths stay black.
+        Any uploaded SVG:
+        <br />
+        <strong>
+          Every &lt;path&gt; becomes TWO paths: <code>*-fill</code> (fill only) and{" "}
+          <code>*-outline</code> (border only).
+        </strong>
+        <br />
+        Change <code>fill</code> on <code>*-fill</code> and the outline will not
+        change.
       </p>
 
       <div style={{ margin: "1rem 0" }}>
@@ -118,7 +128,7 @@ const AdminSvgColorable: React.FC = () => {
       >
         {/* Original SVG input */}
         <div style={{ flex: 1, minWidth: 280 }}>
-          <h2>Original SVG (input)</h2>
+          <h2>Original SVG</h2>
           <textarea
             value={originalSvg}
             onChange={handleOriginalChange}
@@ -134,11 +144,11 @@ const AdminSvgColorable: React.FC = () => {
           />
         </div>
 
-        {/* Normalized SVG output */}
+        {/* Converted SVG */}
         <div style={{ flex: 1, minWidth: 280 }}>
-          <h2>Normalized SVG (width/height 300)</h2>
+          <h2>Converted SVG (with *-fill + *-outline)</h2>
           <textarea
-            value={normalizedSvg}
+            value={convertedSvg}
             readOnly
             style={{
               width: "100%",
@@ -151,14 +161,14 @@ const AdminSvgColorable: React.FC = () => {
           />
           <button
             onClick={handleDownload}
-            disabled={!normalizedSvg}
+            disabled={!convertedSvg}
             style={{
               marginTop: "0.5rem",
               padding: "0.4rem 0.8rem",
-              cursor: normalizedSvg ? "pointer" : "not-allowed",
+              cursor: convertedSvg ? "pointer" : "not-allowed",
             }}
           >
-            Download Normalized SVG
+            Download Converted SVG
           </button>
         </div>
       </div>
@@ -177,9 +187,9 @@ const AdminSvgColorable: React.FC = () => {
             background: "#fafafa",
           }}
         >
-          {normalizedSvg ? (
+          {convertedSvg ? (
             <div
-              dangerouslySetInnerHTML={{ __html: normalizedSvg }}
+              dangerouslySetInnerHTML={{ __html: convertedSvg }}
               style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}
             />
           ) : (
@@ -188,10 +198,10 @@ const AdminSvgColorable: React.FC = () => {
         </div>
       </div>
 
-      {/* Colorable parts list */}
-      {colorableParts.length > 0 && (
+      {/* Chunks table */}
+      {chunks.length > 0 && (
         <div style={{ marginTop: "2rem" }}>
-          <h2>Colorable Parts (ids ending with -fill)</h2>
+          <h2>Chunks (per original path)</h2>
           <table
             style={{
               width: "100%",
@@ -202,28 +212,37 @@ const AdminSvgColorable: React.FC = () => {
             <thead>
               <tr>
                 <th style={thStyle}>#</th>
-                <th style={thStyle}>id</th>
+                <th style={thStyle}>base id</th>
+                <th style={thStyle}>fill id</th>
+                <th style={thStyle}>outline id</th>
                 <th style={thStyle}>default fill</th>
-                <th style={thStyle}>tag</th>
               </tr>
             </thead>
             <tbody>
-              {colorableParts.map((p, i) => (
-                <tr key={p.id}>
+              {chunks.map((c, i) => (
+                <tr key={c.baseId}>
                   <td style={tdStyle}>{i + 1}</td>
                   <td style={tdStyle}>
-                    <code>{p.id}</code>
+                    <code>{c.baseId}</code>
                   </td>
                   <td style={tdStyle}>
-                    <code>{p.defaultColor}</code>
+                    <code>{c.fillId}</code>
                   </td>
-                  <td style={tdStyle}>{p.tagName}</td>
+                  <td style={tdStyle}>
+                    <code>{c.outlineId}</code>
+                  </td>
+                  <td style={tdStyle}>
+                    <code>{c.defaultFill}</code>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
           <p style={{ fontSize: 12, color: "#666", marginTop: "0.5rem" }}>
-            On mobile, change only the <code>fill</code> of these ids; outlines stay fixed.
+            In your app, change the <code>fill</code> of <code>*-fill</code> ids only.
+            Example: <code>chunk-1-fill</code> – outline <code>chunk-1-outline</code>{" "}
+            stays black.
           </p>
         </div>
       )}
@@ -242,7 +261,7 @@ const tdStyle: React.CSSProperties = {
   padding: "0.25rem 0.5rem",
 };
 
-function processSvg(svgString: string): { svg: string; parts: ColorablePart[] } {
+function transformSvg(svgString: string): { svg: string; chunks: ChunkInfo[] } {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgString, "image/svg+xml");
 
@@ -263,27 +282,70 @@ function processSvg(svgString: string): { svg: string; parts: ColorablePart[] } 
     rootSvg.setAttribute("viewBox", `0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`);
   }
 
-  // Collect colorable parts: id ending with "-fill"
-  const colorable: ColorablePart[] = [];
-  const selector = "*[id$='-fill']"; // any element with id ending in -fill
-  const nodes = rootSvg.querySelectorAll(selector);
+  // Get all original paths
+  const originalPaths = Array.from(rootSvg.querySelectorAll("path"));
 
-  nodes.forEach((node) => {
-    if (!(node instanceof Element)) return;
-    const id = node.getAttribute("id");
-    if (!id) return;
-    const fill = node.getAttribute("fill") || "#FFFFFF"; // default inside color
-    colorable.push({
-      id,
-      defaultColor: fill,
-      tagName: node.tagName,
+  if (originalPaths.length === 0) {
+    throw new Error("No <path> elements found in SVG");
+  }
+
+  // New content: we’ll replace all original paths with pairs (fill + outline)
+  const newNodes: Element[] = [];
+  const chunks: ChunkInfo[] = [];
+
+  originalPaths.forEach((pathEl, index) => {
+    const d = pathEl.getAttribute("d") || "";
+    if (!d) return;
+
+    const originalId = pathEl.getAttribute("id") || `chunk-${index + 1}`;
+    const baseId = originalId;
+
+    const originalFill = pathEl.getAttribute("fill") || "#FFFFFF";
+    const stroke = pathEl.getAttribute("stroke") || "black";
+    const strokeWidth = pathEl.getAttribute("stroke-width") || "1";
+
+    const fillId = `${baseId}-fill`;
+    const outlineId = `${baseId}-outline`;
+
+    // CREATE FILL PATH
+    const fillPath = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+    fillPath.setAttribute("id", fillId);
+    fillPath.setAttribute("d", d);
+    fillPath.setAttribute("fill", originalFill);
+    fillPath.setAttribute("stroke", "none");
+
+    // CREATE OUTLINE PATH
+    const outlinePath = doc.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "path"
+    );
+    outlinePath.setAttribute("id", outlineId);
+    outlinePath.setAttribute("d", d);
+    outlinePath.setAttribute("fill", "none");
+    outlinePath.setAttribute("stroke", stroke);
+    outlinePath.setAttribute("stroke-width", strokeWidth);
+    outlinePath.setAttribute("stroke-linejoin", "round");
+
+    newNodes.push(fillPath, outlinePath);
+
+    chunks.push({
+      baseId,
+      fillId,
+      outlineId,
+      defaultFill: originalFill,
     });
+
+    // remove original path
+    pathEl.remove();
   });
 
-  const serializer = new XMLSerializer();
-  const normalized = serializer.serializeToString(rootSvg);
+  // Append new nodes at the end of <svg>
+  newNodes.forEach((node) => rootSvg.appendChild(node));
 
-  return { svg: normalized, parts: colorable };
+  const serializer = new XMLSerializer();
+  const newSvgString = serializer.serializeToString(rootSvg);
+
+  return { svg: newSvgString, chunks };
 }
 
-export default AdminSvgColorable;
+export default SvgChunkConverter;
