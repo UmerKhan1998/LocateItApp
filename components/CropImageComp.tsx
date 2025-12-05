@@ -1,18 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 
 type CellValue = 0 | 1;
-type Tool = "wall" | "start" | "end" | "erase" | "paintColor" | "paintImage";
+type Tool = "wall" | "start" | "end" | "erase";
 type Mode = "edit" | "play" | "finished";
 
 interface Position {
   row: number;
   col: number;
-}
-
-interface CellStyle {
-  mode: "color" | "image" | null;
-  color?: string | null;
-  image?: string | null;
 }
 
 const GRID_SIZE = 10;
@@ -30,17 +24,11 @@ const MazeConfigurator: React.FC = () => {
 
   const [characterImg, setCharacterImg] = useState<string | null>(null); // player
   const [arrivalImg, setArrivalImg] = useState<string | null>(null); // goal
+  const [wallImg, setWallImg] = useState<string | null>(null); // wall texture
+  const [walkImg, setWalkImg] = useState<string | null>(null); // walkable tile texture
 
-  // per–cell style (color or image)
-  const [cellStyles, setCellStyles] = useState<CellStyle[][]>(
-    Array.from({ length: GRID_SIZE }, () =>
-      Array.from({ length: GRID_SIZE }, () => ({ mode: null }))
-    )
-  );
-
-  // "brush" settings used by PAINT tools
-  const [brushColor, setBrushColor] = useState<string>("#e5e7eb");
-  const [brushImage, setBrushImage] = useState<string | null>(null);
+  // background color for walkable cells (0)
+  const [walkBgColor, setWalkBgColor] = useState<string>("#e5e7eb");
 
   const [mode, setMode] = useState<Mode>("edit");
   const [playerPos, setPlayerPos] = useState<Position | null>(null);
@@ -50,10 +38,10 @@ const MazeConfigurator: React.FC = () => {
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
 
-  // uploads for character/arrival OR brush image
+  // image upload handler
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: "character" | "arrival" | "brush"
+    type: "character" | "arrival" | "wall" | "walk"
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -62,19 +50,10 @@ const MazeConfigurator: React.FC = () => {
       const data = reader.result as string;
       if (type === "character") setCharacterImg(data);
       else if (type === "arrival") setArrivalImg(data);
-      else setBrushImage(data);
+      else if (type === "wall") setWallImg(data);
+      else setWalkImg(data);
     };
     reader.readAsDataURL(file);
-  };
-
-  const applyCellStyle = (row: number, col: number, style: CellStyle) => {
-    setCellStyles((prev) =>
-      prev.map((r, ri) =>
-        r.map((cell, ci) =>
-          ri === row && ci === col ? { ...cell, ...style } : cell
-        )
-      )
-    );
   };
 
   const handleCellClick = (row: number, col: number) => {
@@ -82,20 +61,6 @@ const MazeConfigurator: React.FC = () => {
 
     const isStartCell = start?.row === row && start.col === col;
     const isEndCell = end?.row === row && end.col === col;
-
-    if (tool === "paintColor") {
-      applyCellStyle(row, col, { mode: "color", color: brushColor, image: null });
-      return;
-    }
-
-    if (tool === "paintImage") {
-      if (!brushImage) {
-        alert("Please upload a brush image first.");
-        return;
-      }
-      applyCellStyle(row, col, { mode: "image", image: brushImage, color: null });
-      return;
-    }
 
     setMatrix((prev) => {
       const copy = prev.map((r) => [...r]);
@@ -108,8 +73,6 @@ const MazeConfigurator: React.FC = () => {
         copy[row][col] = 0;
         if (isStartCell) setStart(null);
         if (isEndCell) setEnd(null);
-        // also clear style
-        applyCellStyle(row, col, { mode: null, color: null, image: null });
       } else if (tool === "start") {
         if (isEndCell) {
           alert("Start and End cannot be on the same cell.");
@@ -302,26 +265,19 @@ const MazeConfigurator: React.FC = () => {
         </p>
 
         <h4>Tools (Edit Only)</h4>
-        {[
-          { id: "wall", label: "WALL" },
-          { id: "erase", label: "ERASE" },
-          { id: "start", label: "START" },
-          { id: "end", label: "END" },
-          { id: "paintColor", label: "PAINT COLOR" },
-          { id: "paintImage", label: "PAINT IMAGE" },
-        ].map((t) => (
+        {["wall", "erase", "start", "end"].map((t) => (
           <button
-            key={t.id}
+            key={t}
             style={{
               ...styles.button,
-              background: tool === t.id ? "#2563eb" : "#f1f5f9",
-              color: tool === t.id ? "white" : "black",
+              background: tool === t ? "#2563eb" : "#f1f5f9",
+              color: tool === t ? "white" : "black",
               opacity: mode === "edit" ? 1 : 0.5,
               pointerEvents: mode === "edit" ? "auto" : "none",
             }}
-            onClick={() => setTool(t.id as Tool)}
+            onClick={() => setTool(t as Tool)}
           >
-            {t.label}
+            {t.toUpperCase()}
           </button>
         ))}
 
@@ -347,26 +303,36 @@ const MazeConfigurator: React.FC = () => {
         </label>
         {arrivalImg && <img src={arrivalImg} style={styles.preview} />}
 
-        <h4>Cell Design Brush</h4>
+        <h4>Maze Tiles</h4>
         <label>
-          Brush Color (for PAINT COLOR)
-          <input
-            type="color"
-            value={brushColor}
-            onChange={(e) => setBrushColor(e.target.value)}
-            style={{ width: "100%", height: 32, padding: 0, border: "none" }}
-          />
-        </label>
-
-        <label>
-          Brush Image (for PAINT IMAGE)
+          Wall Image (for 1)
           <input
             type="file"
             accept="image/*"
-            onChange={(e) => handleImageUpload(e, "brush")}
+            onChange={(e) => handleImageUpload(e, "wall")}
           />
         </label>
-        {brushImage && <img src={brushImage} style={styles.preview} />}
+        {wallImg && <img src={wallImg} style={styles.preview} />}
+
+        <label>
+          Walk Image (for 0)
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleImageUpload(e, "walk")}
+          />
+        </label>
+        {walkImg && <img src={walkImg} style={styles.preview} />}
+
+        <label>
+          Walk Background Color
+          <input
+            type="color"
+            value={walkBgColor}
+            onChange={(e) => setWalkBgColor(e.target.value)}
+            style={{ width: "100%", height: 32, padding: 0, border: "none" }}
+          />
+        </label>
 
         <h4>Game Controls</h4>
         <button
@@ -409,16 +375,10 @@ const MazeConfigurator: React.FC = () => {
             const isEnd = end?.row === r && end.col === c;
             const isPlayer = playerPos?.row === r && playerPos.col === c;
             const isWallCell = cell === 1;
-            const styleInfo = cellStyles[r][c];
-
-            let backgroundColor = isWallCell ? "#020617" : "#e5e7eb";
-            if (styleInfo.mode === "color" && styleInfo.color) {
-              backgroundColor = styleInfo.color;
-            }
 
             const baseStyle: React.CSSProperties = {
               ...styles.cell,
-              background: backgroundColor,
+              background: isWallCell ? "#020617" : walkBgColor,
               ...(isWallCell
                 ? { borderRadius: getWallBorderRadius(r, c) }
                 : {}),
@@ -426,21 +386,21 @@ const MazeConfigurator: React.FC = () => {
               ...(isEnd ? styles.endCellOutline : {}),
             };
 
-            const hasImage =
-              styleInfo.mode === "image" && styleInfo.image != null;
-
             return (
               <div
                 key={`${r}-${c}`}
                 onClick={() => handleCellClick(r, c)}
                 style={baseStyle}
               >
-                {/* cell image (for either wall or walk) */}
-                {hasImage && (
-                  <img src={styleInfo.image!} style={styles.wallImg} />
+                {/* base wall / walk images */}
+                {isWallCell && wallImg && (
+                  <img src={wallImg} style={styles.tileImg} />
+                )}
+                {!isWallCell && !isStart && !isEnd && !isPlayer && walkImg && (
+                  <img src={walkImg} style={styles.tileImg} />
                 )}
 
-                {/* Edit mode markers (non-wall) */}
+                {/* Edit mode markers */}
                 {mode === "edit" && (
                   <>
                     {isStart &&
@@ -468,7 +428,7 @@ const MazeConfigurator: React.FC = () => {
                   </>
                 )}
 
-                {/* Play / Finished */}
+                {/* Play / Finished (player & goal on top) */}
                 {(mode === "play" || mode === "finished") && (
                   <>
                     {isPlayer && characterImg && (
@@ -567,7 +527,7 @@ const styles: Record<string, React.CSSProperties> = {
     pointerEvents: "none",
     objectFit: "contain",
   },
-  wallImg: {
+  tileImg: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
