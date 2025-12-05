@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { SelfieSegmentation } from "@mediapipe/selfie_segmentation";
 
 type CellValue = 0 | 1;
 type Tool = "wall" | "start" | "end" | "erase";
@@ -10,6 +11,67 @@ interface Position {
 }
 
 const GRID_SIZE = 10;
+
+/**
+ * Remove background from an uploaded image using MediaPipe SelfieSegmentation
+ * Returns a transparent PNG (data URL) with only the foreground kept.
+ */
+const removeBackgroundLocal = async (imageBase64: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = imageBase64;
+
+    img.onload = async () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Could not get 2D context"));
+        return;
+      }
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      const selfieSegmentation = new SelfieSegmentation({
+        locateFile: (file: string) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
+      });
+
+      selfieSegmentation.setOptions({
+        modelSelection: 1,
+      });
+
+      selfieSegmentation.onResults((results: any) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw segmentation mask, then keep only the foreground from the original image
+        ctx.save();
+        ctx.drawImage(
+          results.segmentationMask,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+        ctx.globalCompositeOperation = "source-in";
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        const output = canvas.toDataURL("image/png");
+        resolve(output);
+      });
+
+      try {
+        await selfieSegmentation.send({ image: img });
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    img.onerror = (err) => reject(err);
+  });
+};
 
 const MazeConfigurator: React.FC = () => {
   const [matrix, setMatrix] = useState<CellValue[][]>(
@@ -39,25 +101,32 @@ const MazeConfigurator: React.FC = () => {
   const startTimeRef = useRef<number | null>(null);
 
   // --- image upload handler ---
-  const handleImageUpload = (
+  const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     type: "character" | "arrival" | "wall" | "walk"
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const data = reader.result as string;
+
       if (type === "character") {
-        // NOTE: for "no background", upload a PNG with transparent background
-        setCharacterImg(data);
-      } else if (type === "arrival") {
-        setArrivalImg(data);
-      } else if (type === "wall") {
-        setWallImg(data);
-      } else {
-        setWalkImg(data);
+        // Automatically remove background for character sprite
+        try {
+          const cleaned = await removeBackgroundLocal(data);
+          setCharacterImg(cleaned);
+        } catch (err) {
+          console.error("Background removal failed, using original image", err);
+          setCharacterImg(data);
+        }
+        return;
       }
+
+      if (type === "arrival") setArrivalImg(data);
+      if (type === "wall") setWallImg(data);
+      if (type === "walk") setWalkImg(data);
     };
     reader.readAsDataURL(file);
   };
@@ -407,7 +476,7 @@ const MazeConfigurator: React.FC = () => {
                   <img src={walkImg} style={styles.tileImg} />
                 )}
 
-                {/* Edit mode markers (character / arrival) */}
+                {/* Edit mode markers */}
                 {mode === "edit" && (
                   <>
                     {isStart &&
@@ -542,7 +611,7 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     zIndex: 1,
   },
-  // character sprite on top of tile (assumes transparent PNG for background removal)
+  // character sprite on top of tile (background removed)
   characterOnTile: {
     width: "80%",
     height: "80%",
