@@ -23,7 +23,7 @@ const MazeConfigurator: React.FC = () => {
   const [end, setEnd] = useState<Position | null>(null);
 
   const [characterImg, setCharacterImg] = useState<string | null>(null); // start / player
-  const [arrivalImg, setArrivalImg] = useState<string | null>(null);     // end / goal
+  const [arrivalImg, setArrivalImg] = useState<string | null>(null); // end / goal
 
   const [mode, setMode] = useState<Mode>("edit");
   const [playerPos, setPlayerPos] = useState<Position | null>(null);
@@ -59,17 +59,15 @@ const MazeConfigurator: React.FC = () => {
       const copy = prev.map((r) => [...r]);
 
       if (tool === "wall") {
-        // ❌ Do NOT allow wall on start or end cell
-        if (isStartCell || isEndCell) {
-          return prev;
-        }
+        // don't allow wall on start or end
+        if (isStartCell || isEndCell) return prev;
         copy[row][col] = copy[row][col] === 1 ? 0 : 1;
       } else if (tool === "erase") {
         copy[row][col] = 0;
         if (isStartCell) setStart(null);
         if (isEndCell) setEnd(null);
       } else if (tool === "start") {
-        // don't allow start and end on same cell
+        // cannot share with end
         if (isEndCell) {
           alert("Start and End cannot be on the same cell.");
           return prev;
@@ -77,6 +75,11 @@ const MazeConfigurator: React.FC = () => {
         copy[row][col] = 0;
         setStart({ row, col });
       } else if (tool === "end") {
+        // ❗ End must be in bottom row only
+        if (row !== GRID_SIZE - 1) {
+          alert("Ending point must be in the bottom row.");
+          return prev;
+        }
         if (isStartCell) {
           alert("Start and End cannot be on the same cell.");
           return prev;
@@ -184,7 +187,7 @@ const MazeConfigurator: React.FC = () => {
 
       if (end && newRow === end.row && newCol === end.col) {
         setMode("finished");
-        const timeSec = ((elapsedMs ?? 0) / 1000).toFixed(1);
+        const timeSec = (elapsedMs / 1000).toFixed(1);
         alert(`🎉 Reached the goal!\nSteps: ${steps + 1}\nTime: ${timeSec}s`);
       }
     };
@@ -212,12 +215,12 @@ const MazeConfigurator: React.FC = () => {
       <div style={styles.sidebar}>
         <h2>Maze Admin</h2>
 
-        {/* Legend for start & end markers */}
+        {/* Legend */}
         <div style={styles.legendRow}>
           <div style={{ ...styles.legendDot, backgroundColor: "#10b981" }} />
           <span style={styles.legendText}>Start Point</span>
           <div style={{ ...styles.legendDot, backgroundColor: "#f97373" }} />
-          <span style={styles.legendText}>End Point</span>
+          <span style={styles.legendText}>End Point (bottom row)</span>
         </div>
 
         <p>
@@ -324,11 +327,11 @@ const MazeConfigurator: React.FC = () => {
                 onClick={() => handleCellClick(r, c)}
                 style={baseStyle}
               >
-                {/* Edit mode: show markers (and images if present) */}
+                {/* Edit mode markers */}
                 {mode === "edit" && (
                   <>
-                    {isStart && (
-                      characterImg ? (
+                    {isStart &&
+                      (characterImg ? (
                         <img src={characterImg} style={styles.cellImg} />
                       ) : (
                         <div
@@ -337,10 +340,9 @@ const MazeConfigurator: React.FC = () => {
                             backgroundColor: "#10b981",
                           }}
                         />
-                      )
-                    )}
-                    {isEnd && (
-                      arrivalImg ? (
+                      ))}
+                    {isEnd &&
+                      (arrivalImg ? (
                         <img src={arrivalImg} style={styles.cellImg} />
                       ) : (
                         <div
@@ -349,12 +351,11 @@ const MazeConfigurator: React.FC = () => {
                             backgroundColor: "#f97373",
                           }}
                         />
-                      )
-                    )}
+                      ))}
                   </>
                 )}
 
-                {/* Play / Finished: show player + goal */}
+                {/* Play / Finished */}
                 {(mode === "play" || mode === "finished") && (
                   <>
                     {isPlayer && characterImg && (
@@ -363,7 +364,6 @@ const MazeConfigurator: React.FC = () => {
                     {isEnd && arrivalImg && (
                       <img src={arrivalImg} style={styles.cellImg} />
                     )}
-                    {/* Fallback colored markers if images missing */}
                     {isPlayer && !characterImg && (
                       <div
                         style={{
