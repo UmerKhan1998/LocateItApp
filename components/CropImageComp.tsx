@@ -1,216 +1,410 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
-// imagetracerjs does not ship great TypeScript types, so we just tell TS it's "any"
-import ImageTracer from "imagetracerjs";
-// or, if you prefer global script: declare const ImageTracer: any;
+type CellValue = 0 | 1;
+type Tool = "wall" | "start" | "end" | "erase";
+type Mode = "edit" | "play" | "finished";
 
-const defaultSvgPlaceholder = "<svg><!-- SVG will appear here --></svg>";
+interface Position {
+  row: number;
+  col: number;
+}
 
-const ImageToSvgConverter: React.FC = () => {
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
-  const [svgOutput, setSvgOutput] = useState<string>(defaultSvgPlaceholder);
-  const [isConverting, setIsConverting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const GRID_SIZE = 10;
 
-  const handleFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
+const MazeConfigurator: React.FC = () => {
+  const [matrix, setMatrix] = useState<CellValue[][]>(
+    Array.from({ length: GRID_SIZE }, () =>
+      Array.from({ length: GRID_SIZE }, () => 0)
+    )
+  );
+
+  const [tool, setTool] = useState<Tool>("wall");
+  const [start, setStart] = useState<Position | null>(null);
+  const [end, setEnd] = useState<Position | null>(null);
+
+  const [characterImg, setCharacterImg] = useState<string | null>(null); // start/player image
+  const [arrivalImg, setArrivalImg] = useState<string | null>(null);     // end/goal image
+
+  const [mode, setMode] = useState<Mode>("edit");
+  const [playerPos, setPlayerPos] = useState<Position | null>(null);
+  const [steps, setSteps] = useState<number>(0);
+  const [elapsedMs, setElapsedMs] = useState<number>(0);
+
+  const timerRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+
+  // image upload handler
+  const handleImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: "character" | "arrival"
   ) => {
     const file = e.target.files?.[0];
-    setError(null);
-
     if (!file) return;
-
-    // Only allow images
-    if (!file.type.startsWith("image/")) {
-      setError("Please upload an image file (PNG/JPG/SVG).");
-      return;
-    }
 
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setPreviewSrc(dataUrl);
-      convertToSvg(dataUrl);
+      if (type === "character") setCharacterImg(reader.result as string);
+      else setArrivalImg(reader.result as string);
     };
-    reader.onerror = () => {
-      setError("Could not read file.");
-    };
-
     reader.readAsDataURL(file);
   };
 
-  const convertToSvg = (dataUrl: string) => {
-    setIsConverting(true);
-    setSvgOutput(defaultSvgPlaceholder);
+  const handleCellClick = (row: number, col: number) => {
+    if (mode !== "edit") return;
 
-    // imagetracerjs can take a URL or dataURL
-    const options = {
-      // tweak as needed – fewer colors & paths for coloring-book style
-      numberofcolors: 8,
-      strokewidth: 1,
-      scale: 1,
-      // etc...
+    const isStartCell = start?.row === row && start.col === col;
+    const isEndCell = end?.row === row && end.col === col;
+
+    setMatrix((prev) => {
+      const copy = prev.map((r) => [...r]);
+
+      if (tool === "wall") {
+        // ❌ Do NOT allow wall on start or end cell
+        if (isStartCell || isEndCell) {
+          return prev; // no change
+        }
+        copy[row][col] = copy[row][col] === 1 ? 0 : 1;
+      } else if (tool === "erase") {
+        copy[row][col] = 0;
+        if (isStartCell) setStart(null);
+        if (isEndCell) setEnd(null);
+      } else if (tool === "start") {
+        // Don't allow start and end on same cell
+        if (isEndCell) {
+          alert("Start and End cannot be on the same cell.");
+          return prev;
+        }
+        copy[row][col] = 0;
+        setStart({ row, col });
+      } else if (tool === "end") {
+        // Don't allow end and start on same cell
+        if (isStartCell) {
+          alert("Start and End cannot be on the same cell.");
+          return prev;
+        }
+        copy[row][col] = 0;
+        setEnd({ row, col });
+      }
+
+      return copy;
+    });
+  };
+
+  const handleStartGame = () => {
+    if (!start || !end) {
+      alert("Please set both START and END positions before playing.");
+      return;
+    }
+    if (!characterImg || !arrivalImg) {
+      alert("Please upload CHARACTER and ARRIVAL images before playing.");
+      return;
+    }
+
+    setPlayerPos(start);
+    setSteps(0);
+    setElapsedMs(0);
+    setMode("play");
+  };
+
+  const handleBackToEdit = () => {
+    setMode("edit");
+    setPlayerPos(null);
+    setSteps(0);
+    setElapsedMs(0);
+  };
+
+  // timer
+  useEffect(() => {
+    if (mode === "play") {
+      startTimeRef.current = performance.now();
+      timerRef.current = window.setInterval(() => {
+        if (startTimeRef.current != null) {
+          setElapsedMs(performance.now() - startTimeRef.current);
+        }
+      }, 100);
+    } else {
+      if (timerRef.current != null) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+
+    return () => {
+      if (timerRef.current != null) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [mode]);
+
+  // keyboard movement
+  useEffect(() => {
+    if (mode !== "play") return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!playerPos) return;
+
+      let dRow = 0;
+      let dCol = 0;
+
+      switch (e.key) {
+        case "ArrowUp":
+          dRow = -1;
+          break;
+        case "ArrowDown":
+          dRow = 1;
+          break;
+        case "ArrowLeft":
+          dCol = -1;
+          break;
+        case "ArrowRight":
+          dCol = 1;
+          break;
+        default:
+          return;
+      }
+
+      e.preventDefault();
+
+      const newRow = playerPos.row + dRow;
+      const newCol = playerPos.col + dCol;
+
+      // bounds
+      if (
+        newRow < 0 ||
+        newRow >= GRID_SIZE ||
+        newCol < 0 ||
+        newCol >= GRID_SIZE
+      ) {
+        return;
+      }
+
+      // wall
+      if (matrix[newRow][newCol] === 1) return;
+
+      setPlayerPos({ row: newRow, col: newCol });
+      setSteps((prev) => prev + 1);
+
+      if (end && newRow === end.row && newCol === end.col) {
+        setMode("finished");
+        const timeSec = ((elapsedMs ?? 0) / 1000).toFixed(1);
+        alert(`🎉 Reached the goal!\nSteps: ${steps + 1}\nTime: ${timeSec}s`);
+      }
     };
 
-    ImageTracer.imageToSVG(
-      dataUrl,
-      (svgString: string) => {
-        setSvgOutput(svgString);
-        setIsConverting(false);
-      },
-      options
-    );
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mode, playerPos, matrix, end, steps, elapsedMs]);
+
+  // matrix text output
+  const generateRowColumnOutput = (m: number[][]): string => {
+    const lines: string[] = [];
+    for (let row = 0; row < m.length; row++) {
+      for (let col = 0; col < m[row].length; col++) {
+        lines.push(`row${row + 1},column${col + 1} : ${m[row][col]}`);
+      }
+    }
+    return lines.join("\n");
   };
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(svgOutput);
-      alert("SVG copied to clipboard!");
-    } catch {
-      alert("Could not copy to clipboard.");
-    }
-  };
+  const seconds = (elapsedMs / 1000).toFixed(1);
 
   return (
-    <div
-      style={{
-        maxWidth: 1200,
-        margin: "0 auto",
-        padding: 24,
-        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-      }}
-    >
-      <h1>Image → SVG Region Converter</h1>
-      <p style={{ color: "#555" }}>
-        Upload a high-contrast line-art image (like a coloring page). This will
-        generate SVG paths that you can paste into your React Native app.
-      </p>
+    <div style={styles.container}>
+      {/* Sidebar */}
+      <div style={styles.sidebar}>
+        <h2>Maze Admin</h2>
 
-      <div
-        style={{
-          marginTop: 16,
-          padding: 16,
-          borderRadius: 16,
-          border: "1px solid #ddd",
-          display: "flex",
-          gap: 16,
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ minWidth: 260 }}>
-          <label style={{ fontWeight: 600, fontSize: 14 }}>
-            Upload image
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              style={{ display: "block", marginTop: 8 }}
-            />
-          </label>
+        <p>
+          Mode:{" "}
+          <strong>
+            {mode === "edit"
+              ? "Edit"
+              : mode === "play"
+              ? "Playing"
+              : "Finished"}
+          </strong>
+        </p>
 
-          {error && (
-            <p style={{ color: "red", marginTop: 8, fontSize: 13 }}>{error}</p>
-          )}
-
-          {previewSrc && (
-            <div style={{ marginTop: 16 }}>
-              <p style={{ fontSize: 13, marginBottom: 8 }}>Original preview:</p>
-              <img
-                src={previewSrc}
-                alt="preview"
-                style={{
-                  maxWidth: 260,
-                  maxHeight: 260,
-                  borderRadius: 12,
-                  border: "1px solid #eee",
-                  objectFit: "contain",
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 300 }}>
-          <div
+        <h4>Tools (Edit Only)</h4>
+        {["wall", "erase", "start", "end"].map((t) => (
+          <button
+            key={t}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 8,
+              ...styles.button,
+              background: tool === t ? "#2563eb" : "#f1f5f9",
+              color: tool === t ? "white" : "black",
+              opacity: mode === "edit" ? 1 : 0.5,
+              pointerEvents: mode === "edit" ? "auto" : "none",
             }}
+            onClick={() => setTool(t as Tool)}
           >
-            <p style={{ fontSize: 13, margin: 0 }}>
-              {isConverting
-                ? "Converting to SVG…"
-                : "SVG output (you’ll paste paths into the mobile app):"}
-            </p>
-            <button
-              onClick={handleCopy}
-              disabled={!svgOutput || isConverting}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              Copy SVG
-            </button>
-          </div>
+            {t.toUpperCase()}
+          </button>
+        ))}
 
-          <textarea
-            value={svgOutput}
-            readOnly
-            spellCheck={false}
-            style={{
-              width: "100%",
-              minHeight: 260,
-              fontFamily: "monospace",
-              fontSize: 12,
-              borderRadius: 12,
-              padding: 12,
-              border: "1px solid #ddd",
-              resize: "vertical",
-              whiteSpace: "pre",
-            }}
+        <h4>Upload Images</h4>
+
+        <label>
+          Character (Start / Player) Image
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleImageUpload(e, "character")}
           />
+        </label>
+        {characterImg && <img src={characterImg} style={styles.preview} />}
 
-          <p style={{ fontSize: 12, marginTop: 8, color: "#777" }}>
-            Tip: After vectorization, you might want to clean up the SVG (e.g.,
-            in Illustrator, Figma, or an SVG editor) and make sure each region
-            you want to color is a separate <code>&lt;path&gt;</code> with its
-            own <code>id</code>.
-          </p>
+        <label>
+          Arrival (End / Goal) Image
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleImageUpload(e, "arrival")}
+          />
+        </label>
+        {arrivalImg && <img src={arrivalImg} style={styles.preview} />}
 
-          <div
-            style={{
-              marginTop: 16,
-              borderRadius: 12,
-              border: "1px solid #eee",
-              padding: 12,
-              background: "#fafafa",
-            }}
-          >
-            <p style={{ fontSize: 13, marginBottom: 8 }}>SVG live preview:</p>
-            <div
-              style={{
-                width: "100%",
-                maxHeight: 300,
-                overflow: "auto",
-                background: "#fff",
-                borderRadius: 8,
-                border: "1px solid #eee",
-              }}
-              // Live render of SVG string
-              dangerouslySetInnerHTML={{ __html: svgOutput }}
-            />
-          </div>
-        </div>
+        <h4>Game Controls</h4>
+        <button
+          style={{
+            ...styles.button,
+            background: "#16a34a",
+            color: "white",
+            marginBottom: 4,
+          }}
+          onClick={handleStartGame}
+        >
+          Save & Start Game
+        </button>
+        <button
+          style={{
+            ...styles.button,
+            background: "#e5e7eb",
+            color: "#111827",
+          }}
+          onClick={handleBackToEdit}
+        >
+          Back to Edit
+        </button>
+
+        <h4>Stats</h4>
+        <p>Steps: {steps}</p>
+        <p>Time: {seconds}s</p>
+
+        <h4>Export (Matrix)</h4>
+        <pre style={styles.code}>
+{generateRowColumnOutput(matrix as number[][])}
+        </pre>
+      </div>
+
+      {/* Grid */}
+      <div style={styles.grid}>
+        {matrix.map((row, r) =>
+          row.map((cell, c) => {
+            const isStart = start?.row === r && start.col === c;
+            const isEnd = end?.row === r && end.col === c;
+            const isPlayer = playerPos?.row === r && playerPos.col === c;
+
+            return (
+              <div
+                key={`${r}-${c}`}
+                onClick={() => handleCellClick(r, c)}
+                style={{
+                  ...styles.cell,
+                  background: cell === 1 ? "#020617" : "#e5e7eb",
+                }}
+              >
+                {mode === "play" || mode === "finished" ? (
+                  <>
+                    {isPlayer && characterImg && (
+                      <img src={characterImg} style={styles.cellImg} />
+                    )}
+                    {isEnd && arrivalImg && (
+                      <img src={arrivalImg} style={styles.cellImg} />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {isStart && characterImg && (
+                      <img src={characterImg} style={styles.cellImg} />
+                    )}
+                    {isEnd && arrivalImg && (
+                      <img src={arrivalImg} style={styles.cellImg} />
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
 };
 
-export default ImageToSvgConverter;
+export default MazeConfigurator;
+
+/* Styles */
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    display: "flex",
+    gap: 20,
+    padding: 20,
+    fontFamily: "sans-serif",
+  },
+  sidebar: {
+    width: 320,
+    padding: 16,
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(10, 36px)",
+    gridTemplateRows: "repeat(10, 36px)",
+    gap: 2,
+  },
+  cell: {
+    width: 36,
+    height: 36,
+    borderRadius: 6,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cellImg: {
+    width: "75%",
+    height: "75%",
+    pointerEvents: "none",
+    objectFit: "contain",
+  },
+  button: {
+    width: "100%",
+    marginBottom: 6,
+    padding: 6,
+    borderRadius: 999,
+    border: "none",
+    cursor: "pointer",
+    fontSize: 12,
+  },
+  preview: {
+    width: 60,
+    height: 60,
+    objectFit: "contain",
+    marginTop: 6,
+    display: "block",
+  },
+  code: {
+    fontSize: 10,
+    background: "#020617",
+    color: "#e5e7eb",
+    padding: 10,
+    borderRadius: 8,
+    maxHeight: 200,
+    overflow: "auto",
+    whiteSpace: "pre",
+  },
+};
+v
