@@ -26,8 +26,7 @@ const MazeConfigurator: React.FC = () => {
   const [arrivalImg, setArrivalImg] = useState<string | null>(null); // goal
   const [wallImg, setWallImg] = useState<string | null>(null); // wall texture
 
-  // path / maze background color (for 0 cells)
-  const [pathColor, setPathColor] = useState<string>("#e5e7eb");
+  const [pathColor, setPathColor] = useState<string>("#e5e7eb"); // background for 0 cells
 
   const [mode, setMode] = useState<Mode>("edit");
   const [playerPos, setPlayerPos] = useState<Position | null>(null);
@@ -200,6 +199,32 @@ const MazeConfigurator: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mode, playerPos, matrix, end, steps, elapsedMs]);
 
+  // helper: is (r,c) inside and a wall?
+  const isWall = (r: number, c: number) =>
+    r >= 0 &&
+    r < GRID_SIZE &&
+    c >= 0 &&
+    c < GRID_SIZE &&
+    matrix[r][c] === 1;
+
+  // curved wall shape based on neighbors
+  const getWallBorderRadius = (r: number, c: number): string => {
+    const radius = 14;
+    const up = isWall(r - 1, c);
+    const down = isWall(r + 1, c);
+    const left = isWall(r, c - 1);
+    const right = isWall(r, c + 1);
+
+    // Round only outer edges (where there is no neighbor),
+    // so L-shapes get a smooth outer curve.
+    const tl = up || left ? 0 : radius;
+    const tr = up || right ? 0 : radius;
+    const br = down || right ? 0 : radius;
+    const bl = down || left ? 0 : radius;
+
+    return `${tl}px ${tr}px ${br}px ${bl}px`;
+  };
+
   // matrix text output
   const generateRowColumnOutput = (m: number[][]): string => {
     const lines: string[] = [];
@@ -335,11 +360,14 @@ const MazeConfigurator: React.FC = () => {
             const isStart = start?.row === r && start.col === c;
             const isEnd = end?.row === r && end.col === c;
             const isPlayer = playerPos?.row === r && playerPos.col === c;
-            const isWall = cell === 1;
+            const isWallCell = cell === 1;
 
             const baseStyle: React.CSSProperties = {
               ...styles.cell,
-              background: isWall ? "#020617" : pathColor,
+              background: isWallCell ? "#22c55e" : pathColor,
+              ...(isWallCell
+                ? { borderRadius: getWallBorderRadius(r, c) }
+                : {}),
               ...(isStart ? styles.startCellOutline : {}),
               ...(isEnd ? styles.endCellOutline : {}),
             };
@@ -350,13 +378,13 @@ const MazeConfigurator: React.FC = () => {
                 onClick={() => handleCellClick(r, c)}
                 style={baseStyle}
               >
-                {/* Wall image */}
-                {isWall && wallImg && (
+                {/* Wall image (curved by parent borderRadius) */}
+                {isWallCell && wallImg && (
                   <img src={wallImg} style={styles.wallImg} />
                 )}
 
-                {/* Edit mode markers (for non-wall cells) */}
-                {mode === "edit" && !isWall && (
+                {/* Edit mode markers (non-wall) */}
+                {mode === "edit" && !isWallCell && (
                   <>
                     {isStart &&
                       (characterImg ? (
@@ -383,8 +411,8 @@ const MazeConfigurator: React.FC = () => {
                   </>
                 )}
 
-                {/* Play / Finished (non-wall cells) */}
-                {(mode === "play" || mode === "finished") && !isWall && (
+                {/* Play / Finished (non-wall) */}
+                {(mode === "play" || mode === "finished") && !isWallCell && (
                   <>
                     {isPlayer && characterImg && (
                       <img src={characterImg} style={styles.cellImg} />
@@ -458,7 +486,6 @@ const styles: Record<string, React.CSSProperties> = {
   cell: {
     width: 36,
     height: 36,
-    borderRadius: 6,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
