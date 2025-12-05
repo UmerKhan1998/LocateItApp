@@ -22,10 +22,10 @@ const MazeConfigurator: React.FC = () => {
   const [start, setStart] = useState<Position | null>(null);
   const [end, setEnd] = useState<Position | null>(null);
 
-  const [characterImg, setCharacterImg] = useState<string | null>(null); // player
-  const [arrivalImg, setArrivalImg] = useState<string | null>(null); // goal
-  const [wallImg, setWallImg] = useState<string | null>(null); // wall texture
-  const [walkImg, setWalkImg] = useState<string | null>(null); // walkable tile texture
+  const [characterImg, setCharacterImg] = useState<string | null>(null); // player / start sprite
+  const [arrivalImg, setArrivalImg] = useState<string | null>(null); // goal sprite
+  const [wallImg, setWallImg] = useState<string | null>(null); // wall tile
+  const [walkImg, setWalkImg] = useState<string | null>(null); // walkable tile
 
   // background color for walkable cells (0)
   const [walkBgColor, setWalkBgColor] = useState<string>("#e5e7eb");
@@ -38,7 +38,7 @@ const MazeConfigurator: React.FC = () => {
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
 
-  // image upload handler
+  // --- image upload handler ---
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
     type: "character" | "arrival" | "wall" | "walk"
@@ -48,14 +48,21 @@ const MazeConfigurator: React.FC = () => {
     const reader = new FileReader();
     reader.onload = () => {
       const data = reader.result as string;
-      if (type === "character") setCharacterImg(data);
-      else if (type === "arrival") setArrivalImg(data);
-      else if (type === "wall") setWallImg(data);
-      else setWalkImg(data);
+      if (type === "character") {
+        // NOTE: for "no background", upload a PNG with transparent background
+        setCharacterImg(data);
+      } else if (type === "arrival") {
+        setArrivalImg(data);
+      } else if (type === "wall") {
+        setWallImg(data);
+      } else {
+        setWalkImg(data);
+      }
     };
     reader.readAsDataURL(file);
   };
 
+  // --- editing cells ---
   const handleCellClick = (row: number, col: number) => {
     if (mode !== "edit") return;
 
@@ -98,6 +105,7 @@ const MazeConfigurator: React.FC = () => {
     });
   };
 
+  // --- start / reset game ---
   const handleStartGame = () => {
     if (!start || !end) {
       alert("Please set both START and END positions before playing.");
@@ -121,7 +129,7 @@ const MazeConfigurator: React.FC = () => {
     setElapsedMs(0);
   };
 
-  // timer
+  // --- timer ---
   useEffect(() => {
     if (mode === "play") {
       startTimeRef.current = performance.now();
@@ -145,7 +153,7 @@ const MazeConfigurator: React.FC = () => {
     };
   }, [mode]);
 
-  // keyboard movement
+  // --- keyboard movement ---
   useEffect(() => {
     if (mode !== "play") return;
 
@@ -202,7 +210,7 @@ const MazeConfigurator: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mode, playerPos, matrix, end, steps, elapsedMs]);
 
-  // helper: is (r,c) inside and a wall?
+  // --- helpers for curved walls ---
   const isWall = (r: number, c: number) =>
     r >= 0 &&
     r < GRID_SIZE &&
@@ -210,7 +218,6 @@ const MazeConfigurator: React.FC = () => {
     c < GRID_SIZE &&
     matrix[r][c] === 1;
 
-  // curved wall shape based on neighbors
   const getWallBorderRadius = (r: number, c: number): string => {
     const radius = 14;
     const up = isWall(r - 1, c);
@@ -226,7 +233,7 @@ const MazeConfigurator: React.FC = () => {
     return `${tl}px ${tr}px ${br}px ${bl}px`;
   };
 
-  // matrix text output
+  // --- export format ---
   const generateRowColumnOutput = (m: number[][]): string => {
     const lines: string[] = [];
     for (let row = 0; row < m.length; row++) {
@@ -392,20 +399,20 @@ const MazeConfigurator: React.FC = () => {
                 onClick={() => handleCellClick(r, c)}
                 style={baseStyle}
               >
-                {/* base wall / walk images */}
+                {/* base wall / walk images (zIndex 1) */}
                 {isWallCell && wallImg && (
                   <img src={wallImg} style={styles.tileImg} />
                 )}
-                {!isWallCell && !isStart && !isEnd && !isPlayer && walkImg && (
+                {!isWallCell && walkImg && (
                   <img src={walkImg} style={styles.tileImg} />
                 )}
 
-                {/* Edit mode markers */}
+                {/* Edit mode markers (character / arrival) */}
                 {mode === "edit" && (
                   <>
                     {isStart &&
                       (characterImg ? (
-                        <img src={characterImg} style={styles.cellImg} />
+                        <img src={characterImg} style={styles.characterOnTile} />
                       ) : (
                         <div
                           style={{
@@ -416,7 +423,7 @@ const MazeConfigurator: React.FC = () => {
                       ))}
                     {isEnd &&
                       (arrivalImg ? (
-                        <img src={arrivalImg} style={styles.cellImg} />
+                        <img src={arrivalImg} style={styles.arrivalOnTile} />
                       ) : (
                         <div
                           style={{
@@ -432,10 +439,10 @@ const MazeConfigurator: React.FC = () => {
                 {(mode === "play" || mode === "finished") && (
                   <>
                     {isPlayer && characterImg && (
-                      <img src={characterImg} style={styles.cellImg} />
+                      <img src={characterImg} style={styles.characterOnTile} />
                     )}
                     {isEnd && arrivalImg && (
-                      <img src={arrivalImg} style={styles.cellImg} />
+                      <img src={arrivalImg} style={styles.arrivalOnTile} />
                     )}
                     {isPlayer && !characterImg && (
                       <div
@@ -509,6 +516,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     boxSizing: "border-box",
     overflow: "hidden",
+    position: "relative", // so we can layer images on top
   },
   startCellOutline: {
     boxShadow: "0 0 0 2px #10b981 inset",
@@ -520,18 +528,41 @@ const styles: Record<string, React.CSSProperties> = {
     width: 18,
     height: 18,
     borderRadius: "50%",
+    position: "absolute",
+    zIndex: 5,
   },
-  cellImg: {
-    width: "75%",
-    height: "75%",
-    pointerEvents: "none",
-    objectFit: "contain",
-  },
+  // base tile (wall or walk) underneath
   tileImg: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
     pointerEvents: "none",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    zIndex: 1,
+  },
+  // character sprite on top of tile (assumes transparent PNG for background removal)
+  characterOnTile: {
+    width: "80%",
+    height: "80%",
+    objectFit: "contain",
+    pointerEvents: "none",
+    position: "absolute",
+    top: "10%",
+    left: "10%",
+    zIndex: 10,
+  },
+  // arrival sprite on top
+  arrivalOnTile: {
+    width: "80%",
+    height: "80%",
+    objectFit: "contain",
+    pointerEvents: "none",
+    position: "absolute",
+    top: "10%",
+    left: "10%",
+    zIndex: 9,
   },
   button: {
     width: "100%",
