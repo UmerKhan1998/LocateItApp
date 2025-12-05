@@ -22,8 +22,12 @@ const MazeConfigurator: React.FC = () => {
   const [start, setStart] = useState<Position | null>(null);
   const [end, setEnd] = useState<Position | null>(null);
 
-  const [characterImg, setCharacterImg] = useState<string | null>(null); // start / player
-  const [arrivalImg, setArrivalImg] = useState<string | null>(null); // end / goal
+  const [characterImg, setCharacterImg] = useState<string | null>(null); // player
+  const [arrivalImg, setArrivalImg] = useState<string | null>(null); // goal
+  const [wallImg, setWallImg] = useState<string | null>(null); // wall texture
+
+  // path / maze background color (for 0 cells)
+  const [pathColor, setPathColor] = useState<string>("#e5e7eb");
 
   const [mode, setMode] = useState<Mode>("edit");
   const [playerPos, setPlayerPos] = useState<Position | null>(null);
@@ -36,15 +40,16 @@ const MazeConfigurator: React.FC = () => {
   // image upload handler
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: "character" | "arrival"
+    type: "character" | "arrival" | "wall"
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
-      if (type === "character") setCharacterImg(reader.result as string);
-      else setArrivalImg(reader.result as string);
+      const data = reader.result as string;
+      if (type === "character") setCharacterImg(data);
+      else if (type === "arrival") setArrivalImg(data);
+      else setWallImg(data);
     };
     reader.readAsDataURL(file);
   };
@@ -59,7 +64,7 @@ const MazeConfigurator: React.FC = () => {
       const copy = prev.map((r) => [...r]);
 
       if (tool === "wall") {
-        // don't allow wall on start or end
+        // don't allow wall on start or end cells
         if (isStartCell || isEndCell) return prev;
         copy[row][col] = copy[row][col] === 1 ? 0 : 1;
       } else if (tool === "erase") {
@@ -67,7 +72,6 @@ const MazeConfigurator: React.FC = () => {
         if (isStartCell) setStart(null);
         if (isEndCell) setEnd(null);
       } else if (tool === "start") {
-        // cannot share with end
         if (isEndCell) {
           alert("Start and End cannot be on the same cell.");
           return prev;
@@ -75,7 +79,7 @@ const MazeConfigurator: React.FC = () => {
         copy[row][col] = 0;
         setStart({ row, col });
       } else if (tool === "end") {
-        // ❗ End must be in bottom row only
+        // END must be bottom row
         if (row !== GRID_SIZE - 1) {
           alert("Ending point must be in the bottom row.");
           return prev;
@@ -254,7 +258,7 @@ const MazeConfigurator: React.FC = () => {
         <h4>Upload Images</h4>
 
         <label>
-          Character (Start / Player) Image
+          Character (Start / Player)
           <input
             type="file"
             accept="image/*"
@@ -264,7 +268,7 @@ const MazeConfigurator: React.FC = () => {
         {characterImg && <img src={characterImg} style={styles.preview} />}
 
         <label>
-          Arrival (End / Goal) Image
+          Arrival (End / Goal)
           <input
             type="file"
             accept="image/*"
@@ -272,6 +276,24 @@ const MazeConfigurator: React.FC = () => {
           />
         </label>
         {arrivalImg && <img src={arrivalImg} style={styles.preview} />}
+
+        <label>
+          Wall Image
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleImageUpload(e, "wall")}
+          />
+        </label>
+        {wallImg && <img src={wallImg} style={styles.preview} />}
+
+        <h4>Maze Background (Path Color)</h4>
+        <input
+          type="color"
+          value={pathColor}
+          onChange={(e) => setPathColor(e.target.value)}
+          style={{ width: "100%", height: 32, padding: 0, border: "none" }}
+        />
 
         <h4>Game Controls</h4>
         <button
@@ -313,10 +335,11 @@ const MazeConfigurator: React.FC = () => {
             const isStart = start?.row === r && start.col === c;
             const isEnd = end?.row === r && end.col === c;
             const isPlayer = playerPos?.row === r && playerPos.col === c;
+            const isWall = cell === 1;
 
             const baseStyle: React.CSSProperties = {
               ...styles.cell,
-              background: cell === 1 ? "#020617" : "#e5e7eb",
+              background: isWall ? "#020617" : pathColor,
               ...(isStart ? styles.startCellOutline : {}),
               ...(isEnd ? styles.endCellOutline : {}),
             };
@@ -327,8 +350,13 @@ const MazeConfigurator: React.FC = () => {
                 onClick={() => handleCellClick(r, c)}
                 style={baseStyle}
               >
-                {/* Edit mode markers */}
-                {mode === "edit" && (
+                {/* Wall image */}
+                {isWall && wallImg && (
+                  <img src={wallImg} style={styles.wallImg} />
+                )}
+
+                {/* Edit mode markers (for non-wall cells) */}
+                {mode === "edit" && !isWall && (
                   <>
                     {isStart &&
                       (characterImg ? (
@@ -355,8 +383,8 @@ const MazeConfigurator: React.FC = () => {
                   </>
                 )}
 
-                {/* Play / Finished */}
-                {(mode === "play" || mode === "finished") && (
+                {/* Play / Finished (non-wall cells) */}
+                {(mode === "play" || mode === "finished") && !isWall && (
                   <>
                     {isPlayer && characterImg && (
                       <img src={characterImg} style={styles.cellImg} />
@@ -402,7 +430,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "sans-serif",
   },
   sidebar: {
-    width: 340,
+    width: 360,
     padding: 16,
     border: "1px solid #e5e7eb",
     borderRadius: 12,
@@ -436,6 +464,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     boxSizing: "border-box",
+    overflow: "hidden",
   },
   startCellOutline: {
     boxShadow: "0 0 0 2px #10b981 inset",
@@ -453,6 +482,12 @@ const styles: Record<string, React.CSSProperties> = {
     height: "75%",
     pointerEvents: "none",
     objectFit: "contain",
+  },
+  wallImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    pointerEvents: "none",
   },
   button: {
     width: "100%",
