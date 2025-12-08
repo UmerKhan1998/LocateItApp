@@ -140,7 +140,7 @@ const MazeConfigurator: React.FC = () => {
 
     setMatrix((prev) => {
       const copy = prev.map((r) => [...r]);
-
+       
       if (tool === "wall") {
         // don't allow wall on start or end cells
         if (isStartCell || isEndCell) return prev;
