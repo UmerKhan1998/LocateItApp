@@ -21,6 +21,9 @@ const WordDiscovery = dynamic(() => import("@/components/WordDiscovery"), {
 const CropImageComp = dynamic(() => import("@/components/CropImageComp"), {
   ssr: false,
 });
+const FillTheKabahComp = dynamic(() => import("@/components/FillTheKabah"), {
+  ssr: false,
+});
 const WordDidscoverYPayload = dynamic(
   () => import("@/components/WordDidscoveryPayload"),
   {
@@ -46,6 +49,7 @@ const page = () => {
         ]}
       /> */}
       <CropImageComp />
+      <FillTheKabahComp />
       {/* <WordDiscovery /> */}
       {/* <WordDidscoverYPayload /> */}
     </>
