@@ -4,7 +4,7 @@ import ImageTracer from "imagetracerjs";
 const MAX_SIZE = 600;
 const defaultSvgPlaceholder = "<svg><!-- SVG will appear here --></svg>";
 
-/* 1️⃣ Resize image before processing */
+/* 1️⃣ Resize image */
 const resizeImageToMax = (
   dataUrl: string,
   maxSize: number
@@ -23,7 +23,6 @@ const resizeImageToMax = (
       if (!ctx) return reject("Canvas error");
 
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
       resolve(canvas);
     };
 
@@ -32,7 +31,7 @@ const resizeImageToMax = (
   });
 };
 
-/* 2️⃣ Remove white background */
+/* 2️⃣ Remove white background only */
 const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
@@ -43,9 +42,7 @@ const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   const WHITE_TOLERANCE = 240;
 
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i],
-      g = data[i + 1],
-      b = data[i + 2];
+    const r = data[i], g = data[i + 1], b = data[i + 2];
 
     if (r > WHITE_TOLERANCE && g > WHITE_TOLERANCE && b > WHITE_TOLERANCE) {
       data[i + 3] = 0; // make transparent
@@ -56,27 +53,21 @@ const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   return canvas;
 };
 
-/* 3️⃣ Convert cleaned canvas to base64 PNG */
 const canvasToDataUrl = (canvas: HTMLCanvasElement) =>
   canvas.toDataURL("image/png");
 
-/* 4️⃣ Ensure SVG has viewBox */
+/* 3️⃣ Fix missing viewBox */
 const normalizeSvgViewBox = (svg: string, size: number) => {
   if (svg.includes("viewBox")) return svg;
   return svg.replace("<svg", `<svg viewBox="0 0 ${size} ${size}"`);
 };
 
-/* 5️⃣ Remove unwanted invisible background paths */
-const cleanSvgInvisiblePaths = (svg: string) => {
-  return svg
-    // remove opacity="0"
-    .replace(/<path[^>]*opacity="0"[^>]*>/gi, "")
-    // remove fill-opacity="0"
-    .replace(/<path[^>]*fill-opacity="0"[^>]*>/gi, "")
-    // remove stroke-opacity="0"
-    .replace(/<path[^>]*stroke-opacity="0"[^>]*>/gi, "")
-    // remove fill="none"
-    .replace(/<path[^>]*fill="none"[^>]*>/gi, "");
+/* 4️⃣ REMOVE ONLY the main background path (M 0 0 rectangle) */
+const removeBackgroundPath = (svg: string) => {
+  return svg.replace(
+    /<path[^>]*opacity="0"[^>]*d="[^"]*M\s*0\s*0[^"]*"[^>]*>/gi,
+    ""
+  );
 };
 
 const ImageToSvgConverter: React.FC = () => {
@@ -103,17 +94,17 @@ const ImageToSvgConverter: React.FC = () => {
         const originalDataUrl = reader.result as string;
         setPreviewSrc(originalDataUrl);
 
-        // Resize (600 max)
+        // Resize
         const resizedCanvas = await resizeImageToMax(originalDataUrl, MAX_SIZE);
 
-        // Remove white background
+        // Remove background
         const cleanedCanvas = removeWhiteBackground(resizedCanvas);
 
-        // Convert to PNG dataURL for ImageTracer
+        // Convert to PNG
         const cleanedDataUrl = canvasToDataUrl(cleanedCanvas);
 
         convertToSvg(cleanedDataUrl);
-      } catch (err) {
+      } catch {
         setError("Image processing failed");
       }
     };
@@ -129,8 +120,9 @@ const ImageToSvgConverter: React.FC = () => {
     ImageTracer.imageToSVG(
       dataUrl,
       (rawSvg: string) => {
-        let cleaned = cleanSvgInvisiblePaths(rawSvg);
+        let cleaned = removeBackgroundPath(rawSvg);
         cleaned = normalizeSvgViewBox(cleaned, MAX_SIZE);
+
         setSvgOutput(cleaned);
         setIsConverting(false);
       },
@@ -138,7 +130,6 @@ const ImageToSvgConverter: React.FC = () => {
         numberofcolors: 4,
         strokewidth: 1,
         scale: 1,
-
         ltres: 0.5,
         qtres: 0.5,
         pathomit: 0,
@@ -170,9 +161,8 @@ const ImageToSvgConverter: React.FC = () => {
       <h1>Image → Clean SVG Converter (Background Removed + Optimized)</h1>
 
       <p style={{ color: "#555" }}>
-        Upload image → background removed → vectorized → noise/invisible paths
-        removed.  
-        Result = clean SVG paths perfect for React Native coloring apps.
+        Upload → background removed → vectorized → ONLY background mask removed  
+        Output = perfect SVG regions for React Native coloring.
       </p>
 
       <div
@@ -251,7 +241,6 @@ const ImageToSvgConverter: React.FC = () => {
             }}
           />
 
-          {/* SVG Preview */}
           <div
             style={{
               marginTop: 16,
