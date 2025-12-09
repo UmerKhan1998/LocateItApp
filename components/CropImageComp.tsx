@@ -4,7 +4,7 @@ import ImageTracer from "imagetracerjs";
 const MAX_SIZE = 600;
 const defaultSvgPlaceholder = "<svg><!-- SVG will appear here --></svg>";
 
-/* 1️⃣ Resize image */
+/* 1️⃣ Resize the input image to max resolution */
 const resizeImageToMax = (
   dataUrl: string,
   maxSize: number
@@ -20,18 +20,18 @@ const resizeImageToMax = (
       canvas.height = Math.round(img.height * scale);
 
       const ctx = canvas.getContext("2d");
-      if (!ctx) return reject("Canvas error");
+      if (!ctx) return reject("Canvas not supported");
 
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas);
     };
 
-    img.onerror = () => reject("Image load failed");
+    img.onerror = () => reject("Image load error");
     img.src = dataUrl;
   });
 };
 
-/* 2️⃣ Remove white background only */
+/* 2️⃣ Remove white background (turn it transparent) */
 const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
@@ -42,10 +42,11 @@ const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   const WHITE_TOLERANCE = 240;
 
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i + 1], b = data[i + 2];
-
+    const r = data[i],
+      g = data[i + 1],
+      b = data[i + 2];
     if (r > WHITE_TOLERANCE && g > WHITE_TOLERANCE && b > WHITE_TOLERANCE) {
-      data[i + 3] = 0; // make transparent
+      data[i + 3] = 0;
     }
   }
 
@@ -53,21 +54,35 @@ const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   return canvas;
 };
 
+/* Convert cleaned canvas → DataURL (PNG) */
 const canvasToDataUrl = (canvas: HTMLCanvasElement) =>
   canvas.toDataURL("image/png");
 
-/* 3️⃣ Fix missing viewBox */
+/* 3️⃣ Make sure SVG always has viewBox="0 0 W H" */
 const normalizeSvgViewBox = (svg: string, size: number) => {
   if (svg.includes("viewBox")) return svg;
   return svg.replace("<svg", `<svg viewBox="0 0 ${size} ${size}"`);
 };
 
-/* 4️⃣ REMOVE ONLY the main background path (M 0 0 rectangle) */
+/* 4️⃣ Extract SVG width & height dynamically */
+const getSvgSize = (svg: string) => {
+  const match = svg.match(/viewBox="0 0 (\d+) (\d+)"/);
+  if (!match) {
+    return { w: 600, h: 600 }; // fallback
+  }
+  return { w: parseInt(match[1], 10), h: parseInt(match[2], 10) };
+};
+
+/* 5️⃣ Remove ONLY the big background rectangle path */
 const removeBackgroundPath = (svg: string) => {
-  return svg.replace(
-    /<path[^>]*opacity="0"[^>]*d="[^"]*M\s*0\s*0[^"]*"[^>]*>/gi,
-    ""
+  const { w, h } = getSvgSize(svg);
+
+  const regex = new RegExp(
+    `<path[^>]*opacity="0"[^>]*d="[^"]*(M\\s*0\\s*0)[^"]*(L\\s*${w}\\s*0)[^"]*(L\\s*${w}\\s*${h})[^"]*(L\\s*0\\s*${h})[^"]*"[^>]*>`,
+    "gi"
   );
+
+  return svg.replace(regex, "");
 };
 
 const ImageToSvgConverter: React.FC = () => {
@@ -76,14 +91,15 @@ const ImageToSvgConverter: React.FC = () => {
   const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /* Handle image upload */
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     setError(null);
 
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setError("Please upload PNG or JPG image");
+      setError("Please upload an image file");
       return;
     }
 
@@ -94,17 +110,18 @@ const ImageToSvgConverter: React.FC = () => {
         const originalDataUrl = reader.result as string;
         setPreviewSrc(originalDataUrl);
 
-        // Resize
+        // Step 1: resize
         const resizedCanvas = await resizeImageToMax(originalDataUrl, MAX_SIZE);
 
-        // Remove background
+        // Step 2: remove white background
         const cleanedCanvas = removeWhiteBackground(resizedCanvas);
 
-        // Convert to PNG
+        // Step 3: get cleaned PNG
         const cleanedDataUrl = canvasToDataUrl(cleanedCanvas);
 
+        // Step 4: convert to SVG
         convertToSvg(cleanedDataUrl);
-      } catch {
+      } catch (err) {
         setError("Image processing failed");
       }
     };
@@ -113,6 +130,7 @@ const ImageToSvgConverter: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  /* Convert cleaned PNG → SVG using ImageTracer */
   const convertToSvg = (dataUrl: string) => {
     setIsConverting(true);
     setSvgOutput(defaultSvgPlaceholder);
@@ -120,13 +138,17 @@ const ImageToSvgConverter: React.FC = () => {
     ImageTracer.imageToSVG(
       dataUrl,
       (rawSvg: string) => {
-        let cleaned = removeBackgroundPath(rawSvg);
-        cleaned = normalizeSvgViewBox(cleaned, MAX_SIZE);
+        // Fix viewBox
+        let cleaned = normalizeSvgViewBox(rawSvg, MAX_SIZE);
+
+        // Remove ONLY background big rectangle
+        cleaned = removeBackgroundPath(cleaned);
 
         setSvgOutput(cleaned);
         setIsConverting(false);
       },
       {
+        // Optimal settings for coloring-book style
         numberofcolors: 4,
         strokewidth: 1,
         scale: 1,
@@ -134,12 +156,13 @@ const ImageToSvgConverter: React.FC = () => {
         qtres: 0.5,
         pathomit: 0,
         roundcoords: 2,
-        blur: 0,
         linefilter: true,
+        blur: 0,
       }
     );
   };
 
+  /* Copy to clipboard */
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(svgOutput);
@@ -149,6 +172,7 @@ const ImageToSvgConverter: React.FC = () => {
     }
   };
 
+  /* UI */
   return (
     <div
       style={{
@@ -158,11 +182,10 @@ const ImageToSvgConverter: React.FC = () => {
         fontFamily: "system-ui",
       }}
     >
-      <h1>Image → Clean SVG Converter (Background Removed + Optimized)</h1>
-
+      <h1>Image → Clean SVG Converter (Background Removed)</h1>
       <p style={{ color: "#555" }}>
-        Upload → background removed → vectorized → ONLY background mask removed  
-        Output = perfect SVG regions for React Native coloring.
+        Upload → background removed → vectorized → background path removed.  
+        Output SVG is clean and ready for React Native color-fill.
       </p>
 
       <div
@@ -175,10 +198,10 @@ const ImageToSvgConverter: React.FC = () => {
           flexWrap: "wrap",
         }}
       >
-        {/* Upload + preview */}
+        {/* Image upload */}
         <div style={{ minWidth: 260 }}>
           <label style={{ fontWeight: 600 }}>
-            Upload image
+            Upload Image
             <input
               type="file"
               accept="image/*"
@@ -206,7 +229,7 @@ const ImageToSvgConverter: React.FC = () => {
           )}
         </div>
 
-        {/* SVG OUTPUT */}
+        {/* SVG preview + output */}
         <div style={{ flex: 1 }}>
           <div
             style={{
@@ -216,13 +239,15 @@ const ImageToSvgConverter: React.FC = () => {
             }}
           >
             <p>{isConverting ? "Vectorizing…" : "SVG Output"}</p>
+
             <button
+              onClick={handleCopy}
               style={{
                 borderRadius: 30,
                 padding: "6px 12px",
                 border: "1px solid #ccc",
+                background: "#fff",
               }}
-              onClick={handleCopy}
             >
               Copy SVG
             </button>
@@ -244,11 +269,11 @@ const ImageToSvgConverter: React.FC = () => {
           <div
             style={{
               marginTop: 16,
-              background: "#fafafa",
               padding: 12,
               border: "1px solid #eee",
               borderRadius: 12,
-              maxHeight: 300,
+              background: "#fafafa",
+              maxHeight: 320,
               overflow: "auto",
             }}
             dangerouslySetInnerHTML={{ __html: svgOutput }}
