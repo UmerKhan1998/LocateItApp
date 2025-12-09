@@ -1,283 +1,258 @@
-import React, {
-  useState,
-  useRef,
-  useEffect,
-  ChangeEvent,
-  CSSProperties,
-} from "react";
+import React, { useState } from "react";
+import ImageTracer from "imagetracerjs";
 
-const DEFAULT_SIZE = 300;
+const MAX_SIZE = 600;
+const defaultSvgPlaceholder = "<svg><!-- SVG will appear here --></svg>";
 
-const thStyle: CSSProperties = {
-  borderBottom: "1px solid #ccc",
-  textAlign: "left",
-  padding: "0.25rem 0.5rem",
+/* STEP 1 — Resize uploaded image to max size */
+const resizeImageToMax = (
+  dataUrl: string,
+  maxSize: number
+): Promise<HTMLCanvasElement> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+
+    img.onload = () => {
+      const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject("Canvas error");
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      resolve(canvas);
+    };
+
+    img.onerror = () => reject("Image load failed");
+    img.src = dataUrl;
+  });
 };
 
-const tdStyle: CSSProperties = {
-  borderBottom: "1px solid #eee",
-  padding: "0.25rem 0.5rem",
+/* STEP 2 — Remove white background (convert white → transparent) */
+const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  // Threshold for "white" detection
+  const WHITE_TOLERANCE = 240;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+
+    if (r > WHITE_TOLERANCE && g > WHITE_TOLERANCE && b > WHITE_TOLERANCE) {
+      data[i + 3] = 0; // make transparent
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+
+  return canvas;
 };
 
-const SvgColorableConverter: React.FC = () => {
-  const [originalSvg, setOriginalSvg] = useState("");
-  const [convertedSvg, setConvertedSvg] = useState("");
-  const [viewBox, setViewBox] = useState(`0 0 ${DEFAULT_SIZE} ${DEFAULT_SIZE}`);
+/* STEP 3 — Convert cleaned canvas to SVG */
+const canvasToSvg = (canvas: HTMLCanvasElement) => {
+  return canvas.toDataURL("image/png");
+};
+
+/* Add viewBox if missing */
+const normalizeSvgViewBox = (svg: string, size: number) => {
+  if (svg.includes("viewBox")) return svg;
+  return svg.replace("<svg", `<svg viewBox="0 0 ${size} ${size}"`);
+};
+
+const ImageToSvgConverter: React.FC = () => {
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [svgOutput, setSvgOutput] = useState<string>(defaultSvgPlaceholder);
+  const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [color, setColor] = useState("#ff0000");
-  const [pathsInfo, setPathsInfo] = useState<
-    { baseId: string; fillId?: string; outlineId?: string; isClosed: boolean }[]
-  >([]);
 
-  const previewRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!previewRef.current) return;
-    const container = previewRef.current;
-    const svg = container.querySelector("svg");
-    if (!svg) return;
-
-    const onClick = (e: Event) => {
-      const el = e.target as SVGPathElement;
-      if (!el || el.tagName.toLowerCase() !== "path") return;
-      const id = el.getAttribute("id") || "";
-
-      if (id.endsWith("-fill")) {
-        el.setAttribute("fill", color);
-      }
-    };
-
-    const fillPaths = svg.querySelectorAll('path[id$="-fill"]');
-    fillPaths.forEach((p) => p.addEventListener("click", onClick));
-
-    return () => {
-      fillPaths.forEach((p) => p.removeEventListener("click", onClick));
-    };
-  }, [convertedSvg, color]);
-
-  // ------------------------------
-  // FILE UPLOAD
-  // ------------------------------
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setError(null);
+
     if (!file) return;
 
-    if (!file.type.includes("svg")) {
-      setError("Please upload an SVG file.");
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload PNG or JPG image");
       return;
     }
 
-    setError(null);
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = String(ev.target?.result || "");
-      setOriginalSvg(text);
+
+    reader.onload = async () => {
       try {
-        const result = convertSvgToColorable(text);
-        setConvertedSvg(result.svg);
-        setViewBox(result.viewBox);
-        setPathsInfo(result.info);
+        const originalDataUrl = reader.result as string;
+        setPreviewSrc(originalDataUrl);
+
+        // Step 1: Resize
+        const resizedCanvas = await resizeImageToMax(
+          originalDataUrl,
+          MAX_SIZE
+        );
+
+        // Step 2: Remove background
+        const cleanCanvas = removeWhiteBackground(resizedCanvas);
+
+        // Step 3: Convert cleaned canvas to dataURL
+        const cleanedDataUrl = canvasToSvg(cleanCanvas);
+
+        convertToSvg(cleanedDataUrl);
       } catch (err) {
-        console.error(err);
-        setError("Failed to parse/convert SVG.");
+        setError("Processing failed");
       }
     };
-    reader.readAsText(file);
+
+    reader.onerror = () => setError("Could not read file");
+    reader.readAsDataURL(file);
   };
 
-  // ------------------------------
-  // DOWNLOAD
-  // ------------------------------
-  const handleDownload = () => {
-    if (!convertedSvg) return;
-    const blob = new Blob([convertedSvg], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "colorable.svg";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  const convertToSvg = (dataUrl: string) => {
+    setIsConverting(true);
+    setSvgOutput(defaultSvgPlaceholder);
+
+    ImageTracer.imageToSVG(
+      dataUrl,
+      (svg: string) => {
+        setSvgOutput(normalizeSvgViewBox(svg, MAX_SIZE));
+        setIsConverting(false);
+      },
+      {
+        numberofcolors: 4,
+        strokewidth: 1,
+        scale: 1,
+
+        // Smoothing and detail
+        ltres: 0.5,
+        qtres: 0.5,
+        pathomit: 0,
+        roundcoords: 2,
+        linefilter: true,
+        blur: 0,
+      }
+    );
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(svgOutput);
+      alert("SVG copied!");
+    } catch {
+      alert("Copy failed");
+    }
   };
 
   return (
     <div
       style={{
-        fontFamily: "system-ui, sans-serif",
         maxWidth: 1200,
-        margin: "2rem auto",
-        padding: "0 1rem",
+        margin: "0 auto",
+        padding: 24,
+        fontFamily: "system-ui",
       }}
     >
-      <h1>SVG → Colorable SVG Converter (Background Removed)</h1>
+      <h1>Image → Clean SVG Converter (Background Removed)</h1>
 
-      <input type="file" accept=".svg,image/svg+xml" onChange={handleFileChange} />
+      <p style={{ color: "#555" }}>
+        Upload image → white background auto-removed → vectorized into SVG paths.
+      </p>
 
-      <div>
-        <label>
-          Fill color:
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-          />
-        </label>
-      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: 20,
+          borderRadius: 16,
+          border: "1px solid #ddd",
+          padding: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ minWidth: 260 }}>
+          <label style={{ fontWeight: 600 }}>
+            Upload image
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              style={{ display: "block", marginTop: 8 }}
+            />
+          </label>
 
-      {error && <div style={{ color: "red" }}>{error}</div>}
+          {error && <p style={{ color: "red" }}>{error}</p>}
 
-      <div style={{ display: "flex", gap: "1.5rem", marginTop: "1rem" }}>
-        <div>
-          <h2>Preview</h2>
-          <div
-            ref={previewRef}
-            style={{
-              width: 350,
-              height: 350,
-              border: "1px solid #ccc",
-              background: "#fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            dangerouslySetInnerHTML={{ __html: convertedSvg }}
-          />
+          {previewSrc && (
+            <div style={{ marginTop: 12 }}>
+              <p>Original Preview:</p>
+              <img
+                src={previewSrc}
+                style={{
+                  maxWidth: 260,
+                  maxHeight: 260,
+                  borderRadius: 12,
+                  border: "1px solid #eee",
+                  objectFit: "contain",
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div style={{ flex: 1 }}>
-          <h2>Converted SVG</h2>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 8,
+            }}
+          >
+            <p>{isConverting ? "Converting…" : "SVG Output"}</p>
+            <button
+              style={{
+                borderRadius: 30,
+                padding: "6px 12px",
+                border: "1px solid #ccc",
+              }}
+              onClick={handleCopy}
+            >
+              Copy SVG
+            </button>
+          </div>
+
           <textarea
-            value={convertedSvg}
+            value={svgOutput}
             readOnly
-            style={{ width: "100%", minHeight: 260 }}
+            style={{
+              width: "100%",
+              height: 300,
+              fontFamily: "monospace",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ddd",
+            }}
           />
-          <button onClick={handleDownload}>Download SVG</button>
+
+          <div
+            style={{
+              marginTop: 16,
+              background: "#fafafa",
+              padding: 12,
+              border: "1px solid #eee",
+              borderRadius: 12,
+              maxHeight: 300,
+              overflow: "auto",
+            }}
+            dangerouslySetInnerHTML={{ __html: svgOutput }}
+          />
         </div>
       </div>
     </div>
   );
 };
 
-export default SvgColorableConverter;
-
-/* ===========================================================
-   UTILITY: Convert uploaded SVG → colorable SVG
-   + Removes background FIRST
-   =========================================================== */
-
-function convertSvgToColorable(svgText: string): {
-  svg: string;
-  viewBox: string;
-  info: { baseId: string; fillId?: string; outlineId?: string; isClosed: boolean }[];
-} {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(svgText, "image/svg+xml");
-  const svgRoot = doc.querySelector("svg");
-  if (!svgRoot) throw new Error("Invalid SVG");
-
-  // -------------------------------------------------
-  // REMOVE BACKGROUNDS
-  // -------------------------------------------------
-  const rects = Array.from(svgRoot.querySelectorAll("rect"));
-  rects.forEach((r) => {
-    const x = Number(r.getAttribute("x") || 0);
-    const y = Number(r.getAttribute("y") || 0);
-    const w = Number(r.getAttribute("width") || 0);
-    const h = Number(r.getAttribute("height") || 0);
-
-    // If this rect covers most of the canvas → background
-    if (w > 50 && h > 50) {
-      r.remove();
-    }
-  });
-
-  // remove full-rect paths
-  const paths = Array.from(svgRoot.querySelectorAll("path"));
-  paths.forEach((p) => {
-    const d = p.getAttribute("d") || "";
-    if (/^M\s*0/i.test(d) && /Z$/i.test(d)) {
-      p.remove();
-    }
-  });
-
-  // remove elements with 100% fill-opacity:0
-  const all = Array.from(svgRoot.querySelectorAll("*"));
-  all.forEach((el) => {
-    const op = el.getAttribute("fill-opacity");
-    if (op === "0" || op === "0.0") {
-      el.remove();
-    }
-  });
-
-  // -------------------------------------------------
-  // NOW PROCESS REMAINING PATHS
-  // -------------------------------------------------
-  const width = svgRoot.getAttribute("width") || DEFAULT_SIZE.toString();
-  const height = svgRoot.getAttribute("height") || DEFAULT_SIZE.toString();
-
-  const vbAttr = svgRoot.getAttribute("viewBox");
-  const viewBox = vbAttr || `0 0 ${width} ${height}`;
-
-  if (!vbAttr) {
-    svgRoot.setAttribute("viewBox", viewBox);
-  }
-
-  const remainingPaths = Array.from(svgRoot.querySelectorAll("path"));
-  const newNodes: Element[] = [];
-  const info: {
-    baseId: string;
-    fillId?: string;
-    outlineId?: string;
-    isClosed: boolean;
-  }[] = [];
-
-  remainingPaths.forEach((p, idx) => {
-    const d = p.getAttribute("d") || "";
-    if (!d.trim()) return;
-
-    const baseId = p.getAttribute("id") || `path-${idx + 1}`;
-    const stroke = p.getAttribute("stroke") || "black";
-    const sw = p.getAttribute("stroke-width") || "1.5";
-    const fillAttr = p.getAttribute("fill");
-    const isClosed = /z\s*$/i.test(d.trim());
-
-    if (isClosed) {
-      const fillId = `${baseId}-fill`;
-      const outlineId = `${baseId}-outline`;
-
-      const fillColor = fillAttr && fillAttr !== "none" ? fillAttr : "#FFFFFF";
-
-      const fillPath = doc.createElementNS("http://www.w3.org/2000/svg", "path");
-      fillPath.setAttribute("id", fillId);
-      fillPath.setAttribute("d", d);
-      fillPath.setAttribute("fill", fillColor);
-      fillPath.setAttribute("stroke", "none");
-
-      const outline = doc.createElementNS("http://www.w3.org/2000/svg", "path");
-      outline.setAttribute("id", outlineId);
-      outline.setAttribute("d", d);
-      outline.setAttribute("fill", "none");
-      outline.setAttribute("stroke", stroke);
-      outline.setAttribute("stroke-width", sw);
-
-      newNodes.push(fillPath, outline);
-      info.push({ baseId, fillId, outlineId, isClosed: true });
-    } else {
-      const outline = doc.createElementNS("http://www.w3.org/2000/svg", "path");
-      outline.setAttribute("id", baseId);
-      outline.setAttribute("d", d);
-      outline.setAttribute("fill", "none");
-      outline.setAttribute("stroke", stroke);
-      outline.setAttribute("stroke-width", sw);
-      newNodes.push(outline);
-      info.push({ baseId, isClosed: false });
-    }
-
-    p.remove();
-  });
-
-  newNodes.forEach((node) => svgRoot.appendChild(node));
-  const serializer = new XMLSerializer();
-  return { svg: serializer.serializeToString(svgRoot), viewBox, info };
-}
+export default ImageToSvgConverter;
