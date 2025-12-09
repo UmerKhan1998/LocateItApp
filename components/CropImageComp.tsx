@@ -1,265 +1,362 @@
-import React, { useState } from "react";
-import ImageTracer from "imagetracerjs";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  ChangeEvent,
+  CSSProperties,
+} from "react";
 
-/*
-  Use higher vectorization resolution to avoid pixelated paths.
-  You can try 600, 700, or 800.
-*/
-const MAX_SIZE = 600;
+const DEFAULT_SIZE = 300;
 
-const defaultSvgPlaceholder = "<svg><!-- SVG will appear here --></svg>";
+const thStyle: CSSProperties = {
+  borderBottom: "1px solid #ccc",
+  textAlign: "left",
+  padding: "0.25rem 0.5rem",
+};
 
-/* Resize uploaded image before vectorization */
-const resizeImageToMax = (
-  dataUrl: string,
-  maxSize: number
-): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
+const tdStyle: CSSProperties = {
+  borderBottom: "1px solid #eee",
+  padding: "0.25rem 0.5rem",
+};
 
-    img.onload = () => {
-      const scale = Math.min(
-        maxSize / img.width,
-        maxSize / img.height,
-        1 // never upscale
-      );
+const SvgColorableConverter: React.FC = () => {
+  const [originalSvg, setOriginalSvg] = useState("");
+  const [convertedSvg, setConvertedSvg] = useState("");
+  const [viewBox, setViewBox] = useState(`0 0 ${DEFAULT_SIZE} ${DEFAULT_SIZE}`);
+  const [error, setError] = useState<string | null>(null);
+  const [color, setColor] = useState("#ff0000");
+  const [pathsInfo, setPathsInfo] = useState<
+    { baseId: string; fillId?: string; outlineId?: string; isClosed: boolean }[]
+  >([]);
 
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
+  const previewRef = useRef<HTMLDivElement | null>(null);
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject("Canvas context unavailable");
-        return;
-      }
+  // Attach click handlers to *-fill paths for coloring
+  useEffect(() => {
+    if (!previewRef.current) return;
+    const container = previewRef.current;
+    const svg = container.querySelector("svg");
+    if (!svg) return;
 
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/png"));
+    const onClick = (e: Event) => {
+      const el = e.target as SVGPathElement;
+      if (!el || el.tagName.toLowerCase() !== "path") return;
+
+      const id = el.getAttribute("id") || "";
+      // Only allow coloring fill paths (ids that end with "-fill")
+      if (!id.endsWith("-fill")) return;
+
+      el.setAttribute("fill", color);
     };
 
-    img.onerror = () => reject("Failed to load image");
-    img.src = dataUrl;
-  });
-};
+    const fillPaths = svg.querySelectorAll('path[id$="-fill"]');
+    fillPaths.forEach((p) => p.addEventListener("click", onClick));
 
-/* Ensure SVG always has a viewBox */
-const normalizeSvgViewBox = (svg: string, size: number) => {
-  if (svg.includes("viewBox")) return svg;
-  return svg.replace(
-    "<svg",
-    `<svg viewBox="0 0 ${size} ${size}"`
-  );
-};
+    return () => {
+      fillPaths.forEach((p) => p.removeEventListener("click", onClick));
+    };
+  }, [convertedSvg, color]);
 
-const ImageToSvgConverter: React.FC = () => {
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
-  const [svgOutput, setSvgOutput] = useState<string>(defaultSvgPlaceholder);
-  const [isConverting, setIsConverting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // ============ FILE UPLOAD ============
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    setError(null);
-
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setError("Please upload a PNG or JPG image");
+    if (!file.type.includes("svg")) {
+      setError("Please upload an SVG file.");
       return;
     }
 
+    setError(null);
     const reader = new FileReader();
-
-    reader.onload = async () => {
+    reader.onload = (ev) => {
+      const text = String(ev.target?.result || "");
+      setOriginalSvg(text);
       try {
-        const originalDataUrl = reader.result as string;
-        setPreviewSrc(originalDataUrl);
-
-        const resizedDataUrl = await resizeImageToMax(
-          originalDataUrl,
-          MAX_SIZE
-        );
-
-        convertToSvg(resizedDataUrl);
-      } catch {
-        setError("Image resize failed");
+        const result = convertSvgToColorable(text);
+        setConvertedSvg(result.svg);
+        setViewBox(result.viewBox);
+        setPathsInfo(result.info);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to parse/convert SVG. Make sure it is valid SVG markup.");
       }
     };
-
-    reader.onerror = () => setError("File reading failed");
-    reader.readAsDataURL(file);
+    reader.readAsText(file);
   };
 
-  const convertToSvg = (dataUrl: string) => {
-    setIsConverting(true);
-    setSvgOutput(defaultSvgPlaceholder);
+  // ============ DOWNLOAD CONVERTED SVG ============
 
-    ImageTracer.imageToSVG(
-      dataUrl,
-      (svg: string) => {
-        setSvgOutput(normalizeSvgViewBox(svg, MAX_SIZE));
-        setIsConverting(false);
-      },
-      {
-        // Best for coloring-book style images
-        numberofcolors: 4,
-        strokewidth: 1,
-        scale: 1,
-
-        // Smoothing & quality
-        ltres: 0.5,     // line threshold (lower = more detail)
-        qtres: 0.5,     // curve threshold
-        pathomit: 0,    // keep small shapes
-        roundcoords: 2, // round coords slightly (smooth but not heavy)
-        blur: 0,
-        linefilter: true,
-      }
-    );
-  };
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(svgOutput);
-      alert("SVG copied to clipboard");
-    } catch {
-      alert("Failed to copy");
-    }
+  const handleDownload = () => {
+    if (!convertedSvg) return;
+    const blob = new Blob([convertedSvg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "colorable.svg";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div
       style={{
+        fontFamily: "system-ui, sans-serif",
         maxWidth: 1200,
-        margin: "0 auto",
-        padding: 24,
-        fontFamily:
-          "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        margin: "2rem auto",
+        padding: "0 1rem",
       }}
     >
-      <h1>Image → SVG Region Converter (Smooth)</h1>
+      <h1>SVG → Colorable SVG Converter</h1>
 
-      <p style={{ color: "#555", marginBottom: 16 }}>
-        Upload clean line-art. The image is resized to a high resolution before
-        vectorization to avoid pixelation. Output is optimized for React Native
-        tap-to-fill coloring.
+      <p>
+        Upload an SVG. Closed paths become{" "}
+        <code>*-fill</code> (fillable region) + <code>*-outline</code> (border).
+        Open paths stay as outline-only. Click a region in the preview to change
+        its fill color; borders stay the same.
       </p>
 
-      <div
-        style={{
-          padding: 16,
-          borderRadius: 16,
-          border: "1px solid #ddd",
-          display: "flex",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        {/* Upload + preview */}
-        <div style={{ minWidth: 260 }}>
-          <label style={{ fontWeight: 600 }}>
-            Upload image
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              style={{ display: "block", marginTop: 8 }}
-            />
-          </label>
+      <div style={{ marginBottom: "1rem" }}>
+        <input
+          type="file"
+          accept=".svg,image/svg+xml"
+          onChange={handleFileChange}
+        />
+      </div>
 
-          {error && (
-            <p style={{ color: "red", marginTop: 8 }}>{error}</p>
-          )}
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          Fill color for clicks:{" "}
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+          />
+        </label>
+      </div>
 
-          {previewSrc && (
-            <>
-              <p style={{ fontSize: 13, marginTop: 12 }}>
-                Original preview:
-              </p>
-              <img
-                src={previewSrc}
-                alt="Preview"
-                style={{
-                  maxWidth: 260,
-                  maxHeight: 260,
-                  borderRadius: 12,
-                  border: "1px solid #eee",
-                  objectFit: "contain",
-                }}
-              />
-            </>
-          )}
+      {error && (
+        <div
+          style={{
+            color: "white",
+            background: "#d32f2f",
+            padding: "0.5rem 0.75rem",
+            borderRadius: 4,
+            marginBottom: "1rem",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+        {/* Preview */}
+        <div>
+          <h2>Preview (click fill areas)</h2>
+          <div
+            ref={previewRef}
+            style={{
+              width: 350,
+              height: 350,
+              border: "1px solid #ccc",
+              background: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            dangerouslySetInnerHTML={{ __html: convertedSvg }}
+          />
         </div>
 
-        {/* SVG output */}
-        <div style={{ flex: 1, minWidth: 320 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 6,
-            }}
-          >
-            <p style={{ fontSize: 13, margin: 0 }}>
-              {isConverting ? "Vectorizing…" : "SVG Output"}
-            </p>
-            <button
-              onClick={handleCopy}
-              disabled={isConverting}
-              style={{
-                padding: "6px 14px",
-                borderRadius: 999,
-                border: "1px solid #ccc",
-                cursor: "pointer",
-              }}
-            >
-              Copy SVG
-            </button>
-          </div>
-
+        {/* Converted SVG text */}
+        <div style={{ flex: 1, minWidth: 300 }}>
+          <h2>Converted SVG</h2>
           <textarea
-            value={svgOutput}
+            value={convertedSvg}
             readOnly
             style={{
               width: "100%",
-              minHeight: 320,
+              minHeight: 260,
               fontFamily: "monospace",
               fontSize: 12,
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #ddd",
-              resize: "vertical",
+              padding: "0.5rem",
+              boxSizing: "border-box",
             }}
           />
-
-          <p style={{ fontSize: 12, marginTop: 8, color: "#777" }}>
-            Make sure each colorable region is a separate{" "}
-            <code>&lt;path&gt;</code> with a unique <code>id</code>.
-          </p>
-
-          {/* SVG preview */}
-          <div
+          <button
+            onClick={handleDownload}
+            disabled={!convertedSvg}
             style={{
-              marginTop: 16,
-              border: "1px solid #eee",
-              borderRadius: 12,
-              padding: 12,
-              background: "#fafafa",
+              marginTop: "0.5rem",
+              padding: "0.4rem 0.8rem",
+              cursor: convertedSvg ? "pointer" : "not-allowed",
             }}
           >
-            <p style={{ fontSize: 13, marginBottom: 8 }}>
-              SVG Live Preview
-            </p>
-            <div
-              style={{ maxHeight: 320, overflow: "auto" }}
-              dangerouslySetInnerHTML={{ __html: svgOutput }}
-            />
-          </div>
+            Download Colorable SVG
+          </button>
         </div>
       </div>
+
+      {/* Info table */}
+      {pathsInfo.length > 0 && (
+        <div style={{ marginTop: "2rem" }}>
+          <h2>Paths / Regions Info</h2>
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: 13,
+            }}
+          >
+            <thead>
+              <tr>
+                <th style={thStyle}>#</th>
+                <th style={thStyle}>Base Id</th>
+                <th style={thStyle}>Fill Id</th>
+                <th style={thStyle}>Outline Id</th>
+                <th style={thStyle}>Closed?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pathsInfo.map((p, i) => (
+                <tr key={p.baseId}>
+                  <td style={tdStyle}>{i + 1}</td>
+                  <td style={tdStyle}>
+                    <code>{p.baseId}</code>
+                  </td>
+                  <td style={tdStyle}>
+                    <code>{p.fillId || "-"}</code>
+                  </td>
+                  <td style={tdStyle}>
+                    <code>{p.outlineId || "-"}</code>
+                  </td>
+                  <td style={tdStyle}>{p.isClosed ? "Yes" : "No"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
 
-export default ImageToSvgConverter;
+export default SvgColorableConverter;
+
+/* ===========================================================
+   Utility: convert uploaded SVG string → colorable SVG string
+   - Closed paths => baseId-fill + baseId-outline
+   - Open paths   => outline-only
+   =========================================================== */
+
+function convertSvgToColorable(svgText: string): {
+  svg: string;
+  viewBox: string;
+  info: { baseId: string; fillId?: string; outlineId?: string; isClosed: boolean }[];
+} {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgText, "image/svg+xml");
+
+  const parseError = doc.querySelector("parsererror");
+  if (parseError) {
+    throw new Error("Invalid SVG XML");
+  }
+
+  const svgRoot = doc.querySelector("svg");
+  if (!svgRoot) {
+    throw new Error("No <svg> root element found");
+  }
+
+  const width = svgRoot.getAttribute("width") || String(DEFAULT_SIZE);
+  const height = svgRoot.getAttribute("height") || String(DEFAULT_SIZE);
+  const vbAttr = svgRoot.getAttribute("viewBox");
+  const viewBox = vbAttr || `0 0 ${width} ${height}`;
+  if (!vbAttr) {
+    svgRoot.setAttribute("viewBox", viewBox);
+  }
+
+  const pathEls = Array.from(svgRoot.querySelectorAll("path"));
+
+  const newNodes: Element[] = [];
+  const info: { baseId: string; fillId?: string; outlineId?: string; isClosed: boolean }[] =
+    [];
+
+  pathEls.forEach((pathEl, idx) => {
+    const d = pathEl.getAttribute("d") || "";
+    if (!d.trim()) return;
+
+    const baseId = pathEl.getAttribute("id") || `path-${idx + 1}`;
+
+    // try to read stroke/fill; if style="..." is used, you may want to parse style separately
+    const stroke =
+      pathEl.getAttribute("stroke") ||
+      // fallback for stroke:none in style
+      "black";
+    const strokeWidth = pathEl.getAttribute("stroke-width") || "1.5";
+    const fillAttr = pathEl.getAttribute("fill");
+
+    // crude "is closed" detection
+    const isClosed = /z\s*$/i.test(d.trim());
+
+    if (isClosed) {
+      const fillId = `${baseId}-fill`;
+      const outlineId = `${baseId}-outline`;
+
+      const fillColor =
+        fillAttr && fillAttr !== "none" ? fillAttr : "#FFFFFF";
+
+      // FILL PATH
+      const fillPath = doc.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      fillPath.setAttribute("id", fillId);
+      fillPath.setAttribute("d", d);
+      fillPath.setAttribute("fill", fillColor);
+      fillPath.setAttribute("stroke", "none");
+
+      // OUTLINE PATH
+      const outlinePath = doc.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      outlinePath.setAttribute("id", outlineId);
+      outlinePath.setAttribute("d", d);
+      outlinePath.setAttribute("fill", "none");
+      outlinePath.setAttribute("stroke", stroke);
+      outlinePath.setAttribute("stroke-width", strokeWidth);
+      outlinePath.setAttribute("stroke-linejoin", "round");
+
+      newNodes.push(fillPath, outlinePath);
+      info.push({ baseId, fillId, outlineId, isClosed: true });
+    } else {
+      // Outline-only path (open)
+      const outlinePath = doc.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      outlinePath.setAttribute("id", baseId);
+      outlinePath.setAttribute("d", d);
+      outlinePath.setAttribute("fill", "none");
+      outlinePath.setAttribute("stroke", stroke);
+      outlinePath.setAttribute("stroke-width", strokeWidth);
+      outlinePath.setAttribute("stroke-linejoin", "round");
+
+      newNodes.push(outlinePath);
+      info.push({ baseId, isClosed: false });
+    }
+
+    // remove original
+    pathEl.remove();
+  });
+
+  newNodes.forEach((n) => svgRoot.appendChild(n));
+
+  const serializer = new XMLSerializer();
+  const svg = serializer.serializeToString(svgRoot);
+
+  return { svg, viewBox, info };
+}
