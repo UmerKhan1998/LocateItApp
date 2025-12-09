@@ -4,7 +4,7 @@ import ImageTracer from "imagetracerjs";
 const MAX_SIZE = 600;
 const defaultSvgPlaceholder = "<svg><!-- SVG will appear here --></svg>";
 
-/* STEP 1 — Resize uploaded image to max size */
+/* 1️⃣ Resize image before processing */
 const resizeImageToMax = (
   dataUrl: string,
   maxSize: number
@@ -32,7 +32,7 @@ const resizeImageToMax = (
   });
 };
 
-/* STEP 2 — Remove white background (convert white → transparent) */
+/* 2️⃣ Remove white background */
 const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
@@ -40,11 +40,12 @@ const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
 
-  // Threshold for "white" detection
   const WHITE_TOLERANCE = 240;
 
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const r = data[i],
+      g = data[i + 1],
+      b = data[i + 2];
 
     if (r > WHITE_TOLERANCE && g > WHITE_TOLERANCE && b > WHITE_TOLERANCE) {
       data[i + 3] = 0; // make transparent
@@ -52,19 +53,30 @@ const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   }
 
   ctx.putImageData(imageData, 0, 0);
-
   return canvas;
 };
 
-/* STEP 3 — Convert cleaned canvas to SVG */
-const canvasToSvg = (canvas: HTMLCanvasElement) => {
-  return canvas.toDataURL("image/png");
-};
+/* 3️⃣ Convert cleaned canvas to base64 PNG */
+const canvasToDataUrl = (canvas: HTMLCanvasElement) =>
+  canvas.toDataURL("image/png");
 
-/* Add viewBox if missing */
+/* 4️⃣ Ensure SVG has viewBox */
 const normalizeSvgViewBox = (svg: string, size: number) => {
   if (svg.includes("viewBox")) return svg;
   return svg.replace("<svg", `<svg viewBox="0 0 ${size} ${size}"`);
+};
+
+/* 5️⃣ Remove unwanted invisible background paths */
+const cleanSvgInvisiblePaths = (svg: string) => {
+  return svg
+    // remove opacity="0"
+    .replace(/<path[^>]*opacity="0"[^>]*>/gi, "")
+    // remove fill-opacity="0"
+    .replace(/<path[^>]*fill-opacity="0"[^>]*>/gi, "")
+    // remove stroke-opacity="0"
+    .replace(/<path[^>]*stroke-opacity="0"[^>]*>/gi, "")
+    // remove fill="none"
+    .replace(/<path[^>]*fill="none"[^>]*>/gi, "");
 };
 
 const ImageToSvgConverter: React.FC = () => {
@@ -91,21 +103,18 @@ const ImageToSvgConverter: React.FC = () => {
         const originalDataUrl = reader.result as string;
         setPreviewSrc(originalDataUrl);
 
-        // Step 1: Resize
-        const resizedCanvas = await resizeImageToMax(
-          originalDataUrl,
-          MAX_SIZE
-        );
+        // Resize (600 max)
+        const resizedCanvas = await resizeImageToMax(originalDataUrl, MAX_SIZE);
 
-        // Step 2: Remove background
-        const cleanCanvas = removeWhiteBackground(resizedCanvas);
+        // Remove white background
+        const cleanedCanvas = removeWhiteBackground(resizedCanvas);
 
-        // Step 3: Convert cleaned canvas to dataURL
-        const cleanedDataUrl = canvasToSvg(cleanCanvas);
+        // Convert to PNG dataURL for ImageTracer
+        const cleanedDataUrl = canvasToDataUrl(cleanedCanvas);
 
         convertToSvg(cleanedDataUrl);
       } catch (err) {
-        setError("Processing failed");
+        setError("Image processing failed");
       }
     };
 
@@ -119,8 +128,10 @@ const ImageToSvgConverter: React.FC = () => {
 
     ImageTracer.imageToSVG(
       dataUrl,
-      (svg: string) => {
-        setSvgOutput(normalizeSvgViewBox(svg, MAX_SIZE));
+      (rawSvg: string) => {
+        let cleaned = cleanSvgInvisiblePaths(rawSvg);
+        cleaned = normalizeSvgViewBox(cleaned, MAX_SIZE);
+        setSvgOutput(cleaned);
         setIsConverting(false);
       },
       {
@@ -128,13 +139,12 @@ const ImageToSvgConverter: React.FC = () => {
         strokewidth: 1,
         scale: 1,
 
-        // Smoothing and detail
         ltres: 0.5,
         qtres: 0.5,
         pathomit: 0,
         roundcoords: 2,
-        linefilter: true,
         blur: 0,
+        linefilter: true,
       }
     );
   };
@@ -157,10 +167,12 @@ const ImageToSvgConverter: React.FC = () => {
         fontFamily: "system-ui",
       }}
     >
-      <h1>Image → Clean SVG Converter (Background Removed)</h1>
+      <h1>Image → Clean SVG Converter (Background Removed + Optimized)</h1>
 
       <p style={{ color: "#555" }}>
-        Upload image → white background auto-removed → vectorized into SVG paths.
+        Upload image → background removed → vectorized → noise/invisible paths
+        removed.  
+        Result = clean SVG paths perfect for React Native coloring apps.
       </p>
 
       <div
@@ -173,6 +185,7 @@ const ImageToSvgConverter: React.FC = () => {
           flexWrap: "wrap",
         }}
       >
+        {/* Upload + preview */}
         <div style={{ minWidth: 260 }}>
           <label style={{ fontWeight: 600 }}>
             Upload image
@@ -203,6 +216,7 @@ const ImageToSvgConverter: React.FC = () => {
           )}
         </div>
 
+        {/* SVG OUTPUT */}
         <div style={{ flex: 1 }}>
           <div
             style={{
@@ -211,7 +225,7 @@ const ImageToSvgConverter: React.FC = () => {
               marginBottom: 8,
             }}
           >
-            <p>{isConverting ? "Converting…" : "SVG Output"}</p>
+            <p>{isConverting ? "Vectorizing…" : "SVG Output"}</p>
             <button
               style={{
                 borderRadius: 30,
@@ -237,6 +251,7 @@ const ImageToSvgConverter: React.FC = () => {
             }}
           />
 
+          {/* SVG Preview */}
           <div
             style={{
               marginTop: 16,
