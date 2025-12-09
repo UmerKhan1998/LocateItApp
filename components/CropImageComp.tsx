@@ -1,452 +1,283 @@
-"use client";
-import React, { useMemo, useRef, useState } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  ChangeEvent,
+  CSSProperties,
+} from "react";
 
-/** ---------- Types ---------- */
-type CrosswordCell = {
-  isLetter: boolean;
-  ch: string;
-  startNo: number | null;
-  prefill?: boolean;
+const DEFAULT_SIZE = 300;
+
+const thStyle: CSSProperties = {
+  borderBottom: "1px solid #ccc",
+  textAlign: "left",
+  padding: "0.25rem 0.5rem",
 };
 
-type WordData = {
-  word: string;
-  referenceHeading: string;
-  referenceDesc: string;
+const tdStyle: CSSProperties = {
+  borderBottom: "1px solid #eee",
+  padding: "0.25rem 0.5rem",
 };
 
-interface CrosswordMatrixProps {
-  defaultWords?: WordData[];
-  defaultSize?: number; // 8 | 10 | 15
-}
+const SvgColorableConverter: React.FC = () => {
+  const [originalSvg, setOriginalSvg] = useState("");
+  const [convertedSvg, setConvertedSvg] = useState("");
+  const [viewBox, setViewBox] = useState(`0 0 ${DEFAULT_SIZE} ${DEFAULT_SIZE}`);
+  const [error, setError] = useState<string | null>(null);
+  const [color, setColor] = useState("#ff0000");
+  const [pathsInfo, setPathsInfo] = useState<
+    { baseId: string; fillId?: string; outlineId?: string; isClosed: boolean }[]
+  >([]);
 
-/** ---------- Helpers ---------- */
-const range = (n: number) => Array.from({ length: n }, (_, i) => i);
+  const previewRef = useRef<HTMLDivElement | null>(null);
 
-const newCell = (): CrosswordCell => ({
-  isLetter: false,
-  ch: "",
-  startNo: null,
-  prefill: false,
-});
+  useEffect(() => {
+    if (!previewRef.current) return;
+    const container = previewRef.current;
+    const svg = container.querySelector("svg");
+    if (!svg) return;
 
-const directions = {
-  ACROSS: { dr: 0, dc: 1 },
-  DOWN: { dr: 1, dc: 0 },
-} as const;
+    const onClick = (e: Event) => {
+      const el = e.target as SVGPathElement;
+      if (!el || el.tagName.toLowerCase() !== "path") return;
+      const id = el.getAttribute("id") || "";
 
-function canPlace(
-  grid: CrosswordCell[][],
-  r: number,
-  c: number,
-  word: string,
-  dir: "ACROSS" | "DOWN"
-): boolean {
-  const { dr, dc } = directions[dir];
-  const H = grid.length;
-  const W = grid[0].length;
-  const endR = r + dr * (word.length - 1);
-  const endC = c + dc * (word.length - 1);
-  if (endR < 0 || endR >= H || endC < 0 || endC >= W) return false;
+      if (id.endsWith("-fill")) {
+        el.setAttribute("fill", color);
+      }
+    };
 
-  for (let i = 0; i < word.length; i++) {
-    const rr = r + dr * i;
-    const cc = c + dc * i;
-    const cell = grid[rr][cc];
-    if (cell.isLetter && cell.ch !== word[i]) return false;
-  }
-  return true;
-}
+    const fillPaths = svg.querySelectorAll('path[id$="-fill"]');
+    fillPaths.forEach((p) => p.addEventListener("click", onClick));
 
-function placeWord(
-  grid: CrosswordCell[][],
-  r: number,
-  c: number,
-  word: string,
-  dir: "ACROSS" | "DOWN"
-) {
-  const { dr, dc } = directions[dir];
-  for (let i = 0; i < word.length; i++) {
-    const rr = r + dr * i;
-    const cc = c + dc * i;
-    const cell = grid[rr][cc];
-    cell.isLetter = true;
-    cell.ch = word[i];
-  }
-}
+    return () => {
+      fillPaths.forEach((p) => p.removeEventListener("click", onClick));
+    };
+  }, [convertedSvg, color]);
 
-function buildNumbersAndClues(
-  grid: CrosswordCell[][],
-  placedSeq: { word: string; heading: string; desc: string }[]
-) {
-  const H = grid.length;
-  const W = grid[0].length;
-  let number = 1;
-  const across: any[] = [];
-  const down: any[] = [];
+  // ------------------------------
+  // FILE UPLOAD
+  // ------------------------------
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const metaLeft = placedSeq.slice();
-  const takeMeta = (w: string) => {
-    const idx = metaLeft.findIndex((m) => m.word === w);
-    if (idx >= 0) return metaLeft.splice(idx, 1)[0];
-    return { word: w, heading: "Clue", desc: "—" };
+    if (!file.type.includes("svg")) {
+      setError("Please upload an SVG file.");
+      return;
+    }
+
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = String(ev.target?.result || "");
+      setOriginalSvg(text);
+      try {
+        const result = convertSvgToColorable(text);
+        setConvertedSvg(result.svg);
+        setViewBox(result.viewBox);
+        setPathsInfo(result.info);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to parse/convert SVG.");
+      }
+    };
+    reader.readAsText(file);
   };
 
-  for (let r = 0; r < H; r++) {
-    for (let c = 0; c < W; c++) {
-      if (!grid[r][c].isLetter) continue;
-
-      const startAcross =
-        (c === 0 || !grid[r][c - 1].isLetter) && (c + 1 < W && grid[r][c + 1].isLetter);
-      const startDown =
-        (r === 0 || !grid[r - 1][c].isLetter) && (r + 1 < H && grid[r + 1][c].isLetter);
-
-      if (startAcross || startDown) {
-        grid[r][c].startNo = number;
-        if (startAcross) {
-          const w: string[] = [];
-          let cc = c;
-          while (cc < W && grid[r][cc].isLetter) {
-            w.push(grid[r][cc].ch);
-            cc++;
-          }
-          const wordStr = w.join("");
-          const meta = takeMeta(wordStr);
-          across.push({ number, word: wordStr, heading: meta.heading, desc: meta.desc, row: r, col: c, len: wordStr.length });
-        }
-        if (startDown) {
-          const w: string[] = [];
-          let rr = r;
-          while (rr < H && grid[rr][c].isLetter) {
-            w.push(grid[rr][c].ch);
-            rr++;
-          }
-          const wordStr = w.join("");
-          const meta = takeMeta(wordStr);
-          down.push({ number, word: wordStr, heading: meta.heading, desc: meta.desc, row: r, col: c, len: wordStr.length });
-        }
-        number++;
-      }
-    }
-  }
-  return { across, down };
-}
-
-function generateGrid(
-  size: number,
-  words: WordData[]
-): {
-  grid: CrosswordCell[][];
-  placedMeta: { word: string; heading: string; desc: string }[];
-} {
-  const items = words.map((w) => ({
-    word: w.word.trim().toLowerCase(),
-    heading: w.referenceHeading,
-    desc: w.referenceDesc,
-  }));
-
-  const grid = range(size).map(() => range(size).map(newCell));
-  const placed: typeof items = [];
-
-  if (items.length === 0) return { grid, placedMeta: [] };
-
-  // Place first word across
-  const first = items[0];
-  const r = Math.floor(size / 2);
-  const c = Math.max(0, Math.floor((size - first.word.length) / 2));
-  if (canPlace(grid, r, c, first.word, "ACROSS")) {
-    placeWord(grid, r, c, first.word, "ACROSS");
-    placed.push(first);
-  }
-
-  // Try others (simple intersections)
-  for (let i = 1; i < items.length; i++) {
-    const w = items[i];
-    let placedFlag = false;
-    for (let rr = 0; rr < size && !placedFlag; rr++) {
-      for (let cc = 0; cc < size && !placedFlag; cc++) {
-        if (!grid[rr][cc].isLetter) continue;
-        for (let k = 0; k < w.word.length; k++) {
-          if (w.word[k] !== grid[rr][cc].ch) continue;
-          if (canPlace(grid, rr - k, cc, w.word, "DOWN")) {
-            placeWord(grid, rr - k, cc, w.word, "DOWN");
-            placed.push(w);
-            placedFlag = true;
-          } else if (canPlace(grid, rr, cc - k, w.word, "ACROSS")) {
-            placeWord(grid, rr, cc - k, w.word, "ACROSS");
-            placed.push(w);
-            placedFlag = true;
-          }
-        }
-      }
-    }
-  }
-
-  return { grid, placedMeta: placed };
-}
-
-/** ---------- Component ---------- */
-const CrosswordMatrixGenerator: React.FC<CrosswordMatrixProps> = ({
-  defaultWords = [
-    { word: "HEAT", referenceHeading: "Temperature", referenceDesc: "Form of energy that causes things to become warm" },
-    { word: "APPLE", referenceHeading: "Fruit", referenceDesc: "A round fruit that keeps doctors away" },
-  ],
-  defaultSize = 10,
-}) => {
-  const [size, setSize] = useState(defaultSize);
-  const [wordsInput, setWordsInput] = useState<WordData[]>(defaultWords);
-  const [showAnswers, setShowAnswers] = useState(false);
-  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
-
-  const { grid, across, down } = useMemo(() => {
-    const { grid, placedMeta } = generateGrid(size, wordsInput);
-    const { across, down } = buildNumbersAndClues(grid, placedMeta);
-    // prefill first letters
-    for (const a of across) grid[a.row][a.col].prefill = true;
-    for (const d of down) grid[d.row][d.col].prefill = true;
-    return { grid, across, down };
-  }, [size, wordsInput]);
-
-  const [newWord, setNewWord] = useState("");
-  const [newHeading, setNewHeading] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-
-  const addWord = () => {
-    const w = newWord.trim().toLowerCase();
-    if (!w) return;
-    setWordsInput(prev => [...prev, {
-      word: w.toUpperCase(),
-      referenceHeading: newHeading || "Clue",
-      referenceDesc: newDesc || "—",
-    }]);
-    setNewWord(""); setNewHeading(""); setNewDesc("");
-  };
-
-  /** ---------- Submit with required payload ---------- */
-  const handleSubmit = async () => {
-    try {
-      setStatus("submitting");
-
-      // Transform grid to required format
-      const formattedGrid = grid.map(row =>
-        row.map(cell => {
-          if (!cell || !cell.isLetter) {
-            return {
-              isPattern: false,
-              aplhabet: "",
-              referenceNo: null,
-              referenceHeading: "",
-              referenceDesc: "",
-            };
-          }
-
-          let refNo: number | null = cell.startNo;
-          let heading = "";
-          let desc = "";
-          if (refNo) {
-            const clue =
-              across.find(a => a.number === refNo) ||
-              down.find(d => d.number === refNo);
-            if (clue) {
-              heading = clue.heading;
-              desc = clue.desc;
-            }
-          }
-          return {
-            isPattern: true,
-            aplhabet: cell.ch.toUpperCase(),
-            referenceNo: refNo,
-            referenceHeading: heading,
-            referenceDesc: desc,
-          };
-        })
-      );
-
-      const payload = {
-        title: "Crossword Puzzle",
-        description: "Solve the crossword based on the given clues.",
-        typeId: 4,
-        crosswordPuzzleMatrix: formattedGrid,
-      };
-
-      console.log("Submitting payload:", payload);
-
-      const res = await fetch("http://localhost:5001/api/activity/CrosswordPuzzleMatrix/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error("Failed to save crossword");
-      setStatus("success");
-    } catch {
-      setStatus("error");
-    } finally {
-      setTimeout(() => setStatus("idle"), 2500);
-    }
-  };
-
-  /** ---------- Export to SVG (transparent background) ---------- */
-  const downloadSVG = (withAnswers: boolean) => {
-    const CELL = 40; // px
-    const W = grid[0]?.length || size;
-    const H = grid.length || size;
-    const width = W * CELL;
-    const height = H * CELL;
-
-    // Build SVG elements (no <rect> for empty cells, so background is transparent)
-    const parts: string[] = [];
-    parts.push(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
-    );
-
-    // Draw letter cells
-    for (let r = 0; r < H; r++) {
-      for (let c = 0; c < W; c++) {
-        const cell = grid[r][c];
-        if (!cell.isLetter) continue; // transparent for empties
-
-        const x = c * CELL;
-        const y = r * CELL;
-
-        // Cell rectangle (white fill, black stroke)
-        parts.push(
-          `<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" fill="#ffffff" stroke="#000000" stroke-width="1"/>`
-        );
-
-        // Small reference number (top-left)
-        if (cell.startNo) {
-          parts.push(
-            `<text x="${x + 3}" y="${y + 10}" font-family="Arial, sans-serif" font-size="10" fill="#333">${cell.startNo}</text>`
-          );
-        }
-
-        // Letter (centered) — show only if answers OR prefill
-        const show = withAnswers || cell.prefill;
-        if (show) {
-          // center text
-          const cx = x + CELL / 2;
-          const cy = y + CELL / 2 + 8; // visual vertical tweak
-          parts.push(
-            `<text x="${cx}" y="${cy}" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#000">${cell.ch.toUpperCase()}</text>`
-          );
-        }
-      }
-    }
-
-    parts.push(`</svg>`);
-    const svg = parts.join("");
-
-    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  // ------------------------------
+  // DOWNLOAD
+  // ------------------------------
+  const handleDownload = () => {
+    if (!convertedSvg) return;
+    const blob = new Blob([convertedSvg], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const base = withAnswers ? "crossword_answers" : "crossword_blank";
-    a.download = `${base}_${W}x${H}.svg`;
     a.href = url;
+    a.download = "colorable.svg";
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-900 to-purple-700 p-6 text-white">
-      <h2 className="text-3xl font-bold text-center mb-6">🧩 Crossword Puzzle Generator</h2>
+    <div
+      style={{
+        fontFamily: "system-ui, sans-serif",
+        maxWidth: 1200,
+        margin: "2rem auto",
+        padding: "0 1rem",
+      }}
+    >
+      <h1>SVG → Colorable SVG Converter (Background Removed)</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto">
-        {/* LEFT: Grid */}
-        <div className="flex flex-col items-center">
+      <input type="file" accept=".svg,image/svg+xml" onChange={handleFileChange} />
+
+      <div>
+        <label>
+          Fill color:
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+          />
+        </label>
+      </div>
+
+      {error && <div style={{ color: "red" }}>{error}</div>}
+
+      <div style={{ display: "flex", gap: "1.5rem", marginTop: "1rem" }}>
+        <div>
+          <h2>Preview</h2>
           <div
-            className="grid p-3 rounded-xl shadow-lg mb-4"
+            ref={previewRef}
             style={{
-              // background removed visually; only cells render color in UI if desired
-              background: "transparent",
-              gridTemplateColumns: `repeat(${size}, 2.5rem)`,
-              gridTemplateRows: `repeat(${size}, 2.5rem)`,
-              gap: "2px",
+              width: 350,
+              height: 350,
+              border: "1px solid #ccc",
+              background: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
-          >
-            {Array.from({ length: size }).map((_, r) =>
-              Array.from({ length: size }).map((_, c) => {
-                const cell = grid[r][c];
-                if (!cell.isLetter) {
-                  // visually transparent in UI
-                  return <div key={`${r}-${c}`} className="w-10 h-10" />;
-                }
-                return (
-                  <div
-                    key={`${r}-${c}`}
-                    className="relative flex items-center justify-center bg-white text-black border border-black font-bold"
-                  >
-                    {cell.startNo && (
-                      <span className="absolute text-[0.6rem] top-[2px] left-[3px] text-gray-700">
-                        {cell.startNo}
-                      </span>
-                    )}
-                    <span>{(showAnswers || cell.prefill) ? cell.ch.toUpperCase() : ""}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-3 mb-3">
-            <button onClick={() => setShowAnswers(s => !s)} className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded">
-              {showAnswers ? "Hide Answers" : "Show Answers"}
-            </button>
-            <select value={size} onChange={e => setSize(Number(e.target.value))} className="bg-purple-700 px-2 py-1 rounded">
-              <option value={8}>8 × 8</option>
-              <option value={10}>10 × 10</option>
-              <option value={15}>15 × 15</option>
-            </select>
-
-            {/* 🧾 SVG export buttons — transparent background */}
-            <button onClick={() => downloadSVG(false)} className="bg-slate-200 text-black px-3 py-1 rounded">
-              Download SVG (Blank)
-            </button>
-            <button onClick={() => downloadSVG(true)} className="bg-slate-200 text-black px-3 py-1 rounded">
-              Download SVG (Answers)
-            </button>
-          </div>
+            dangerouslySetInnerHTML={{ __html: convertedSvg }}
+          />
         </div>
 
-        {/* RIGHT: Controls */}
-        <div className="bg-purple-800 p-5 rounded-lg shadow">
-          <h3 className="font-semibold mb-3">Manage Words & Clues</h3>
-          <input value={newWord} onChange={e => setNewWord(e.target.value)} placeholder="Word" className="w-full mb-2 px-2 py-1 bg-purple-700 rounded" />
-          <input value={newHeading} onChange={e => setNewHeading(e.target.value)} placeholder="Heading" className="w-full mb-2 px-2 py-1 bg-purple-700 rounded" />
-          <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description" className="w-full mb-2 px-2 py-1 bg-purple-700 rounded" />
-          <button onClick={() => {
-            const w = newWord.trim().toLowerCase();
-            if (!w) return;
-            setWordsInput(prev => [...prev, {
-              word: w.toUpperCase(),
-              referenceHeading: newHeading || "Clue",
-              referenceDesc: newDesc || "—",
-            }]);
-            setNewWord(""); setNewHeading(""); setNewDesc("");
-          }} className="w-full bg-purple-600 py-1 rounded">➕ Add Word</button>
-
-          <div className="mt-5">
-            <h4 className="font-bold mb-1">Across</h4>
-            {across.map(a => (
-              <div key={a.number}>{a.number}. {a.heading} — {a.desc}</div>
-            ))}
-            <h4 className="font-bold mt-3 mb-1">Down</h4>
-            {down.map(d => (
-              <div key={d.number}>{d.number}. {d.heading} — {d.desc}</div>
-            ))}
-          </div>
-
-          <button onClick={handleSubmit} className="w-full mt-5 bg-green-600 py-1 rounded">
-            {status === "submitting" ? "Saving..." : "💾 Submit Crossword"}
-          </button>
-          {status === "success" && <p className="text-green-300 mt-2">Saved!</p>}
-          {status === "error" && <p className="text-red-300 mt-2">Error saving</p>}
+        <div style={{ flex: 1 }}>
+          <h2>Converted SVG</h2>
+          <textarea
+            value={convertedSvg}
+            readOnly
+            style={{ width: "100%", minHeight: 260 }}
+          />
+          <button onClick={handleDownload}>Download SVG</button>
         </div>
       </div>
     </div>
   );
 };
 
-export default CrosswordMatrixGenerator;
+export default SvgColorableConverter;
+
+/* ===========================================================
+   UTILITY: Convert uploaded SVG → colorable SVG
+   + Removes background FIRST
+   =========================================================== */
+
+function convertSvgToColorable(svgText: string): {
+  svg: string;
+  viewBox: string;
+  info: { baseId: string; fillId?: string; outlineId?: string; isClosed: boolean }[];
+} {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgText, "image/svg+xml");
+  const svgRoot = doc.querySelector("svg");
+  if (!svgRoot) throw new Error("Invalid SVG");
+
+  // -------------------------------------------------
+  // REMOVE BACKGROUNDS
+  // -------------------------------------------------
+  const rects = Array.from(svgRoot.querySelectorAll("rect"));
+  rects.forEach((r) => {
+    const x = Number(r.getAttribute("x") || 0);
+    const y = Number(r.getAttribute("y") || 0);
+    const w = Number(r.getAttribute("width") || 0);
+    const h = Number(r.getAttribute("height") || 0);
+
+    // If this rect covers most of the canvas → background
+    if (w > 50 && h > 50) {
+      r.remove();
+    }
+  });
+
+  // remove full-rect paths
+  const paths = Array.from(svgRoot.querySelectorAll("path"));
+  paths.forEach((p) => {
+    const d = p.getAttribute("d") || "";
+    if (/^M\s*0/i.test(d) && /Z$/i.test(d)) {
+      p.remove();
+    }
+  });
+
+  // remove elements with 100% fill-opacity:0
+  const all = Array.from(svgRoot.querySelectorAll("*"));
+  all.forEach((el) => {
+    const op = el.getAttribute("fill-opacity");
+    if (op === "0" || op === "0.0") {
+      el.remove();
+    }
+  });
+
+  // -------------------------------------------------
+  // NOW PROCESS REMAINING PATHS
+  // -------------------------------------------------
+  const width = svgRoot.getAttribute("width") || DEFAULT_SIZE.toString();
+  const height = svgRoot.getAttribute("height") || DEFAULT_SIZE.toString();
+
+  const vbAttr = svgRoot.getAttribute("viewBox");
+  const viewBox = vbAttr || `0 0 ${width} ${height}`;
+
+  if (!vbAttr) {
+    svgRoot.setAttribute("viewBox", viewBox);
+  }
+
+  const remainingPaths = Array.from(svgRoot.querySelectorAll("path"));
+  const newNodes: Element[] = [];
+  const info: {
+    baseId: string;
+    fillId?: string;
+    outlineId?: string;
+    isClosed: boolean;
+  }[] = [];
+
+  remainingPaths.forEach((p, idx) => {
+    const d = p.getAttribute("d") || "";
+    if (!d.trim()) return;
+
+    const baseId = p.getAttribute("id") || `path-${idx + 1}`;
+    const stroke = p.getAttribute("stroke") || "black";
+    const sw = p.getAttribute("stroke-width") || "1.5";
+    const fillAttr = p.getAttribute("fill");
+    const isClosed = /z\s*$/i.test(d.trim());
+
+    if (isClosed) {
+      const fillId = `${baseId}-fill`;
+      const outlineId = `${baseId}-outline`;
+
+      const fillColor = fillAttr && fillAttr !== "none" ? fillAttr : "#FFFFFF";
+
+      const fillPath = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+      fillPath.setAttribute("id", fillId);
+      fillPath.setAttribute("d", d);
+      fillPath.setAttribute("fill", fillColor);
+      fillPath.setAttribute("stroke", "none");
+
+      const outline = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+      outline.setAttribute("id", outlineId);
+      outline.setAttribute("d", d);
+      outline.setAttribute("fill", "none");
+      outline.setAttribute("stroke", stroke);
+      outline.setAttribute("stroke-width", sw);
+
+      newNodes.push(fillPath, outline);
+      info.push({ baseId, fillId, outlineId, isClosed: true });
+    } else {
+      const outline = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+      outline.setAttribute("id", baseId);
+      outline.setAttribute("d", d);
+      outline.setAttribute("fill", "none");
+      outline.setAttribute("stroke", stroke);
+      outline.setAttribute("stroke-width", sw);
+      newNodes.push(outline);
+      info.push({ baseId, isClosed: false });
+    }
+
+    p.remove();
+  });
+
+  newNodes.forEach((node) => svgRoot.appendChild(node));
+  const serializer = new XMLSerializer();
+  return { svg: serializer.serializeToString(svgRoot), viewBox, info };
+}
