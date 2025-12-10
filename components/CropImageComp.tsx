@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-// If TypeScript complains about types, you can add a .d.ts or use @ts-ignore
+// If TS complains about types, you can add a .d.ts or keep this @ts-ignore
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import ImageTracer from "imagetracerjs";
@@ -9,7 +9,7 @@ import ImageTracer from "imagetracerjs";
 const MAX_SIZE = 600;
 const defaultSvgPlaceholder = "<svg><!-- SVG will appear here --></svg>";
 
-// Resize image to a max size
+// Resize image to a maximum size (keeping aspect ratio)
 const resizeImageToMax = (dataUrl: string, maxSize: number) => {
   return new Promise<HTMLCanvasElement>((resolve, reject) => {
     const img = new Image();
@@ -32,7 +32,7 @@ const resizeImageToMax = (dataUrl: string, maxSize: number) => {
   });
 };
 
-// Remove white background (make white transparent)
+// Remove white background (make nearly white pixels transparent)
 const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
@@ -47,6 +47,7 @@ const removeWhiteBackground = (canvas: HTMLCanvasElement) => {
     const g = data[i + 1];
     const b = data[i + 2];
 
+    // If close to white → make transparent
     if (r > WHITE_TOLERANCE && g > WHITE_TOLERANCE && b > WHITE_TOLERANCE) {
       data[i + 3] = 0;
     }
@@ -65,32 +66,34 @@ const normalizeSvgViewBox = (svg: string, size: number) => {
   return svg.replace("<svg", `<svg viewBox="0 0 ${size} ${size}"`);
 };
 
-// Normalize a single <path> tag to be stroke-only (black outline, white fill)
-// This is the key part for "coloring book" style SVG.
+// ✅ Normalize a single <path> tag to stroke-only black outline + white fill
+//    Even if original path had opacity=0 / fill-opacity=0 / fill="none".
 const normalizePathTag = (p: string) => {
   let out = p;
 
-  // remove inline style/fill/stroke/stroke-width if any
+  // Remove inline styling and fill/stroke/opacity attrs from original
   out = out.replace(/\sstyle="[^"]*"/gi, "");
   out = out.replace(/\sfill="[^"]*"/gi, "");
+  out = out.replace(/\sfill-opacity="[^"]*"/gi, "");
+  out = out.replace(/\sopacity="[^"]*"/gi, "");
   out = out.replace(/\sstroke="[^"]*"/gi, "");
   out = out.replace(/\sstroke-width="[^"]*"/gi, "");
 
-  // enforce stroke + fill
+  // Force stroke + fill so region is visible & clickable
   out = out.replace(
     "<path",
-    `<path stroke="black" stroke-width="1.5" fill="white" `
+    `<path stroke="black" stroke-width="1.5" fill="white" fill-opacity="1" `
   );
 
   return out;
 };
 
-// Extract list of PATH TAGS (full tag strings, not just d)
+// Extract full <path ... /> tag strings from SVG
 const extractPathList = (svg: string) => {
   return [...svg.matchAll(/<path[\s\S]*?\/?>/gi)].map((m) => m[0]);
 };
 
-// Replace ALL paths in the SVG <svg> … paths … </svg>
+// Rebuild SVG contents with a new list of path tags
 const rebuildSvgWithPaths = (svg: string, newPathList: string[]) => {
   return svg.replace(/<svg[^>]*>[\s\S]*<\/svg>/i, (full) => {
     const open = full.match(/<svg[^>]*>/i)![0];
@@ -108,7 +111,7 @@ const ImageToSvgConverterPage: React.FC = () => {
   const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Upload image
+  // Handle image upload
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -140,7 +143,7 @@ const ImageToSvgConverterPage: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  // Start SVG conversion
+  // Convert image (dataUrl) → SVG using ImageTracer
   const convertToSvg = (dataUrl: string) => {
     setIsConverting(true);
 
@@ -149,11 +152,12 @@ const ImageToSvgConverterPage: React.FC = () => {
       (rawSvg: string) => {
         const fixedSvg = normalizeSvgViewBox(rawSvg, MAX_SIZE);
 
-        // Extract paths and normalize them for stroke-line coloring
+        // Extract original paths
         const extracted = extractPathList(fixedSvg);
+        // Normalize each for stroke/white-fill coloring
         const normalizedPaths = extracted.map(normalizePathTag);
 
-        // Rebuild SVG with cleaned paths only
+        // Rebuild the SVG using normalized paths only
         const cleanedSvg = rebuildSvgWithPaths(fixedSvg, normalizedPaths);
 
         setPaths(normalizedPaths);
@@ -172,14 +176,14 @@ const ImageToSvgConverterPage: React.FC = () => {
     );
   };
 
-  // Highlight a single path in red (visual feedback in preview)
+  // Highlight a path by index (for preview)
   const getHighlightedSvg = () => {
     if (highlightIndex === null) return svgOutput;
 
     const modified = paths.map((p, i) => {
       if (i !== highlightIndex) return p;
 
-      // add highlight stroke on top of existing attrs
+      // Add red highlight stroke (still fillable)
       const highlight = p.replace(
         "<path",
         `<path stroke="red" stroke-width="4" `
@@ -191,7 +195,7 @@ const ImageToSvgConverterPage: React.FC = () => {
     return rebuildSvgWithPaths(svgOutput, modified);
   };
 
-  // Delete path from SVG + list
+  // Delete a path by index
   const deletePath = (index: number) => {
     const newPaths = paths.filter((_, i) => i !== index);
     const newSvg = rebuildSvgWithPaths(svgOutput, newPaths);
@@ -207,12 +211,13 @@ const ImageToSvgConverterPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 1400, margin: "0 auto", padding: 24 }}>
-      <h1>Image → SVG Path Editor (Next.js)</h1>
+      <h1>Image → SVG Path Editor (Coloring-ready)</h1>
 
       <p style={{ marginBottom: 16 }}>
-        Upload an image, auto-trace to SVG, convert to{" "}
-        <strong>black stroke / white fill</strong> paths, highlight or delete
-        individual paths, and copy clean SVG for React Native / web coloring.
+        Upload an image, auto-trace to SVG, normalize all paths to{" "}
+        <b>stroke=black + fill=white</b> (even if they had opacity=0), then
+        highlight or delete individual paths. Use the output SVG in web / React
+        Native coloring apps.
       </p>
 
       {error && (
@@ -245,7 +250,9 @@ const ImageToSvgConverterPage: React.FC = () => {
           <h3 style={{ marginTop: 0 }}>
             Paths ({paths.length}){" "}
             {isConverting && (
-              <span style={{ fontSize: 12, color: "#999" }}>(converting…)</span>
+              <span style={{ fontSize: 12, color: "#999" }}>
+                (converting…)
+              </span>
             )}
           </h3>
 
@@ -279,7 +286,7 @@ const ImageToSvgConverterPage: React.FC = () => {
                   wordBreak: "break-all",
                 }}
               >
-                {p.substring(0, 110)}...
+                {p.substring(0, 120)}...
               </div>
 
               <button
@@ -362,6 +369,7 @@ const ImageToSvgConverterPage: React.FC = () => {
               overflow: "auto",
               background: "#fff",
             }}
+            // svgOutput and highlighted version are already normalized (stroke+fill)
             dangerouslySetInnerHTML={{ __html: getHighlightedSvg() }}
           />
         </div>
